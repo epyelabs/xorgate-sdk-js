@@ -1,0 +1,456 @@
+{
+  "version": 1,
+  "generatedBy": "backend/xorgate-core-service: npm run contract:generate",
+  "wireVersion": 1,
+  "namespaces": {
+    "gnssAntBias": {
+      "applyClass": "modem-poll",
+      "kind": "scalar",
+      "description": "GPS antenna bias (`gnssAntBias`): true powers an active antenna over the coax, false (default) is the passive/bias-off hardware-safe state.",
+      "defaults": false,
+      "jsonSchema": {
+        "type": "boolean",
+        "description": "GPS antenna mode: true powers an active antenna (DC bias over the coax), false (default) = passive antenna, bias off. Applied by the modem daemon on its ~30 s poll."
+      }
+    },
+    "imuMount": {
+      "applyClass": "agent-poll",
+      "kind": "object",
+      "description": "IMU mounting correction (`imuMount` namespace): how the sensor is physically rotated relative to the vehicle (ZYX euler, degrees). All four fields are required. Applied live by the IMU collector; absent = no correction.",
+      "defaults": {
+        "enabled": false,
+        "rollDeg": 0,
+        "pitchDeg": 0,
+        "yawDeg": 0
+      },
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Apply the correction. false publishes sensor-frame euler angles as-is."
+          },
+          "rollDeg": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360,
+            "description": "Roll rotation of the sensor relative to the vehicle, degrees."
+          },
+          "pitchDeg": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360,
+            "description": "Pitch rotation of the sensor relative to the vehicle, degrees."
+          },
+          "yawDeg": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360,
+            "description": "Yaw rotation of the sensor relative to the vehicle, degrees."
+          }
+        },
+        "required": [
+          "enabled",
+          "rollDeg",
+          "pitchDeg",
+          "yawDeg"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "recording": {
+      "applyClass": "agent-poll",
+      "kind": "object",
+      "description": "On-device recording settings (`recording` namespace). All fields optional — omitted fields fall back to device defaults. Unknown keys and out-of-range values are rejected. Applied live by the agent (5 s settings poll, and forced on every cloud config message); toggling video recording or changing its preset briefly restarts the live stream.",
+      "defaults": {
+        "telemetry": {
+          "enabled": false,
+          "rateHz": 10
+        },
+        "video": {
+          "enabled": false,
+          "preset": "1080p15-2mbps",
+          "segmentSeconds": 60,
+          "bootDefer": "auto",
+          "bootDeferMaxSecs": 90,
+          "bootDeferMinBudgetMa": 5000,
+          "gpsGate": "auto",
+          "gpsGateMaxSecs": 600,
+          "gpsGateNoProgressSecs": 120,
+          "spawnStaggerSecs": 4,
+          "cameras": {}
+        },
+        "upload": {
+          "mode": "auto"
+        },
+        "retention": {
+          "maxBytes": 10737418240,
+          "minFreeBytes": 2147483648
+        },
+        "powerShedding": {
+          "enabled": true,
+          "uvSamples": 3,
+          "uvWindowSecs": 30,
+          "railLowVolts": 4.85,
+          "railLowSecs": 15,
+          "escalateDwellSecs": 60,
+          "escalateDutyPct": 70,
+          "cpuTempC": 80,
+          "cpuTempRestoreC": 70,
+          "cpuTempSecs": 15,
+          "restoreSecs": 120,
+          "railRestoreVolts": 4.95,
+          "maxShedsPerHour": 4
+        }
+      },
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "telemetry": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Record telemetry locally (default false)."
+              },
+              "rateHz": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20,
+                "description": "Target sample rate. Each sensor group is additionally capped by its native cadence (IMU 20 Hz, GPS 1 Hz, system 1 Hz). Default 10."
+              }
+            },
+            "additionalProperties": false
+          },
+          "video": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Record camera video locally (default false)."
+              },
+              "preset": {
+                "type": "string",
+                "enum": [
+                  "1080p30-4mbps",
+                  "1080p15-2mbps",
+                  "720p30-2mbps",
+                  "720p15-2mbps",
+                  "720p15-1mbps"
+                ],
+                "description": "Closed quality preset table (bounded CPU cost). Default 1080p15-2mbps."
+              },
+              "segmentSeconds": {
+                "type": "integer",
+                "minimum": 10,
+                "maximum": 300,
+                "description": "Segment length — the unit of upload, retry and eviction. Default 60."
+              },
+              "bootDefer": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "always",
+                  "off"
+                ],
+                "description": "Boot power staging: auto (default) defers heavy encoders at boot only when the negotiated PSU budget is below bootDeferMinBudgetMa; always defers every boot; off starts everything immediately."
+              },
+              "bootDeferMaxSecs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 600,
+                "description": "Hard cap on the boot defer in seconds. Default 90; 0 = feature off."
+              },
+              "bootDeferMinBudgetMa": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000,
+                "description": "auto mode skips the defer when the negotiated supply budget (mA) is at or above this. Default 5000 (a true 5 V/5 A PD supply)."
+              },
+              "gpsGate": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "always",
+                  "off"
+                ],
+                "description": "GPS/LTE video gate: hold video (recording AND live) until the modem stops converting power into value — LTE connected with a GPS fix, a declared dead zone, a sustained no-signal sky, or gpsGateMaxSecs. auto (default) applies it only below bootDeferMinBudgetMa; always gates every boot; off disables it. Telemetry recording is never gated."
+              },
+              "gpsGateMaxSecs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3600,
+                "description": "Give-up cap on the GPS/LTE gate in seconds. Default 600; 0 = no time cap (the other release conditions still apply)."
+              },
+              "gpsGateNoProgressSecs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3600,
+                "description": "No-progress escape hatch for the GPS/LTE gate, in seconds. Releases the gate once NEITHER a GPS fix NOR an LTE connection has arrived for this long — the underground-garage case, where every other release condition is blind. Cannot fire while LTE is connected (that is the genuinely-acquiring case). Default 120; 0 = off, leaving only gpsGateMaxSecs."
+              },
+              "spawnStaggerSecs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30,
+                "description": "Delay between camera encoder spawns in seconds (flattens the start-up power transient). Default 4; 0 = simultaneous."
+              },
+              "cameras": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "description": "Per-camera enable keyed by stream key (e.g. {\"cam1\": false}). A disabled camera gets no pipeline at all — no recording, no shm bridge, no live stream. An absent key means enabled, so {} is every detected camera (the default). Use it to match camera count to the supply (one camera on a 3 A install, two on 5 A)."
+              }
+            },
+            "additionalProperties": false
+          },
+          "upload": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "off"
+                ],
+                "description": "auto (default): drain segments to S3 whenever connected; off: keep local only."
+              }
+            },
+            "additionalProperties": false
+          },
+          "powerShedding": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Master switch. Default true."
+              },
+              "uvSamples": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 60,
+                "description": "Shed when this many ~1 Hz samples with the CURRENT undervoltage bit land within uvWindowSecs. Default 3."
+              },
+              "uvWindowSecs": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 300,
+                "description": "Undervoltage counting window in seconds. Default 30."
+              },
+              "railLowVolts": {
+                "type": "number",
+                "minimum": 4,
+                "maximum": 5.2,
+                "description": "Alternative trigger: 5 V rail below this, sustained railLowSecs. Default 4.85."
+              },
+              "railLowSecs": {
+                "type": "integer",
+                "minimum": 3,
+                "maximum": 120,
+                "description": "How long the rail must stay below railLowVolts to trigger. Default 15."
+              },
+              "escalateDwellSecs": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 600,
+                "description": "Trailing window (seconds) evaluated for escalation to the next rung (no-live → bridge-only). Default 60."
+              },
+              "escalateDutyPct": {
+                "type": "integer",
+                "minimum": 50,
+                "maximum": 100,
+                "description": "Escalate when the supply was bad (shed trigger, or an individual undervoltage/low-rail sample) for at least this percentage of the trailing escalateDwellSecs window. Default 70; 100 requires a continuously bad supply, which a noisy rail never provides."
+              },
+              "cpuTempC": {
+                "type": "number",
+                "minimum": 50,
+                "maximum": 90,
+                "description": "Thermal arm trigger: shed live streaming once the SoC has been at/above this for cpuTempSecs. Default 80 (5 °C below the Pi hard throttle)."
+              },
+              "cpuTempRestoreC": {
+                "type": "number",
+                "minimum": 40,
+                "maximum": 85,
+                "description": "Thermal restore threshold: the SoC must be below this for the restore timer to run. Default 70 (a 10 °C anti-flap margin)."
+              },
+              "cpuTempSecs": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 120,
+                "description": "How long the SoC must hold at/above cpuTempC to arm the shed. Default 15."
+              },
+              "restoreSecs": {
+                "type": "integer",
+                "minimum": 10,
+                "maximum": 3600,
+                "description": "Clean interval (zero undervoltage samples, rail at/above railRestoreVolts) required to restore one rung. Default 120."
+              },
+              "railRestoreVolts": {
+                "type": "number",
+                "minimum": 4,
+                "maximum": 5.4,
+                "description": "Rail must be at/above this for a sample to count as clean. Default 4.95."
+              },
+              "maxShedsPerHour": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60,
+                "description": "Shed cycles per rolling hour before the device parks at its shed level (no auto-restore until reboot or a settings change). Default 4."
+              }
+            },
+            "additionalProperties": false,
+            "description": "Runtime undervoltage + thermal load shedding: when the 5 V rail measurably fails (or the SoC runs hot), the device sheds live streaming first, then video recording (bridge-only), and restores in reverse with hysteresis. Telemetry recording is never shed."
+          },
+          "retention": {
+            "type": "object",
+            "properties": {
+              "maxBytes": {
+                "type": "integer",
+                "minimum": 536870912,
+                "maximum": 1099511627776,
+                "description": "Local recordings quota in bytes (oldest segments evicted first). Default 10 GiB."
+              },
+              "minFreeBytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 68719476736,
+                "description": "Free-disk floor in bytes; recording evicts/stops before crossing it. Default 2 GiB."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "lteRecovery": {
+      "applyClass": "modem-poll",
+      "kind": "object",
+      "description": "LTE recovery policy (`lteRecovery` namespace): how aggressively the device connection manager may use the GNSS-destructive full modem reset. Both fields optional; omitted fields fall back to the device defaults. Read live by the modem daemon at its next recovery decision — no device restart.",
+      "defaults": {
+        "gpsFixResetPolicy": "defer",
+        "deadZoneProfile": "balanced"
+      },
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "gpsFixResetPolicy": {
+            "type": "string",
+            "enum": [
+              "defer",
+              "veto-deadzone"
+            ],
+            "description": "With a live GPS fix: \"defer\" (default) allows a modem reset only after 30+ min of unusable LTE; \"veto-deadzone\" additionally never resets while parked in a dead zone."
+          },
+          "deadZoneProfile": {
+            "type": "string",
+            "enum": [
+              "conservative",
+              "balanced",
+              "aggressive"
+            ],
+            "description": "Dead-zone recovery pacing: conservative (nudge every 15-120 min, never resets), balanced (default; 10-60 min, reset only after 3 failed radio cycles), aggressive (10-20 min, reset after 1 failed cycle)."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "timeSync": {
+      "applyClass": "agent-poll",
+      "kind": "object",
+      "description": "Offline time sources (`timeSync` namespace): while NTP is unsynced this boot, the agent may step the system clock from GPS (valid GNSS fix) or the modem NITZ clock, then stand down for the boot once NTP synchronizes. All fields optional; omitted fields fall back to the device defaults.",
+      "defaults": {
+        "offlineSources": true,
+        "stepThresholdSecs": 10,
+        "maxStepsPerBoot": 4
+      },
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "offlineSources": {
+            "type": "boolean",
+            "description": "Kill switch: false disables GPS/NITZ clock stepping entirely (device default: true)."
+          },
+          "stepThresholdSecs": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 600,
+            "description": "Step only when the measured clock offset exceeds this many seconds (device default 10). A battery-backed RTC boots inside the threshold, making the feature a natural no-op."
+          },
+          "maxStepsPerBoot": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Hard cap on clock steps per boot (device default 4; bounds a flapping source)."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cellular": {
+      "applyClass": "modem-poll",
+      "kind": "object",
+      "description": "Cellular data-context settings (`cellular` namespace). `apn` empty or absent leaves the modem's stored APN untouched (the safe default). A non-empty APN is applied by the modem daemon with apply-and-confirm rollback: real traffic must flow over the modem interface within a bounded window or the previous APN is restored automatically. Read live from settings.json by the modem daemon — never restart it to apply a setting.",
+      "defaults": {
+        "apn": ""
+      },
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "apn": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9.-]*$",
+            "description": "Access Point Name for the cellular data context. EMPTY or ABSENT leaves the modem's stored APN untouched — the safe default for every existing device. A change is applied with confirm-and-rollback: the device proves real data flows over the new APN within a bounded window, or restores the previous one by itself."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "uiPrefs": {
+    "defaults": {
+      "activeStreamsViewType": "card",
+      "imuView": {
+        "azimuthDeg": 45,
+        "elevationDeg": 24
+      }
+    },
+    "jsonSchema": {
+      "type": "object",
+      "properties": {
+        "activeStreamsViewType": {
+          "type": "string",
+          "enum": [
+            "card",
+            "map"
+          ],
+          "description": "Layout for the Active Streams tab: card grid (default) or location-first map view."
+        },
+        "imuView": {
+          "type": "object",
+          "properties": {
+            "azimuthDeg": {
+              "type": "number",
+              "minimum": -360,
+              "maximum": 360,
+              "description": "Camera azimuth for the 3D orientation view, degrees."
+            },
+            "elevationDeg": {
+              "type": "number",
+              "minimum": -85,
+              "maximum": 85,
+              "description": "Camera elevation for the 3D orientation view, degrees. Bounded to ±85: at the poles the look-at up-vector degenerates and the view flips."
+            }
+          },
+          "required": [
+            "azimuthDeg",
+            "elevationDeg"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

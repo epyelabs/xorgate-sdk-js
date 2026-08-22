@@ -1,0 +1,76 @@
+{
+  "$comment": "Hand-derived from xorgate-core-service src/schemas/capabilities.ts (the zod schema provisioning parses with). This file is the SDK's copy of that contract; scripts/generate.mjs turns it into src/generated/capabilities.ts. When capabilities.ts changes upstream, xorgate-core-service's test/sdk-vendor-drift.test.ts fails and points here.",
+  "$sourceFile": "src/schemas/capabilities.ts",
+  "$sourceSha256": "ac24a8733fbd89032ebfc353e4418264e268f3b2b1ad35b177b16080721a33d6",
+  "root": "IoCapabilities",
+  "definitions": {
+    "FieldList": {
+      "kind": "object",
+      "properties": {
+        "fields": { "kind": "array", "items": { "kind": "string" }, "required": true }
+      }
+    },
+    "VideoCapability": {
+      "kind": "object",
+      "properties": {
+        "key": { "kind": "string", "required": true },
+        "codec": { "kind": "string", "required": true },
+        "maxWidth": { "kind": "number", "int": true, "positive": true },
+        "maxHeight": { "kind": "number", "int": true, "positive": true },
+        "maxFps": { "kind": "number", "positive": true },
+        "label": { "kind": "string" }
+      }
+    },
+    "AudioCapability": {
+      "kind": "object",
+      "properties": {
+        "key": { "kind": "string", "required": true },
+        "codec": { "kind": "string", "required": true },
+        "sampleRate": { "kind": "number", "int": true, "positive": true },
+        "channels": { "kind": "number", "int": true, "positive": true }
+      }
+    },
+    "ImuCapability": {
+      "kind": "object",
+      "properties": {
+        "axes": { "kind": "array", "items": { "kind": "string" } },
+        "accel": { "kind": "array", "items": { "kind": "string" } },
+        "quaternion": { "kind": "array", "items": { "kind": "string" } },
+        "euler": { "kind": "array", "items": { "kind": "string" } },
+        "unit": { "kind": "string" },
+        "rateHz": { "kind": "number", "positive": true }
+      }
+    },
+    "MediaCapabilities": {
+      "kind": "object",
+      "properties": {
+        "video": { "kind": "array", "items": { "kind": "ref", "ref": "VideoCapability" }, "default": [] },
+        "audio": { "kind": "array", "items": { "kind": "ref", "ref": "AudioCapability" }, "default": [] }
+      }
+    },
+    "SensorsCapabilities": {
+      "kind": "object",
+      "properties": {
+        "imu": { "kind": "ref", "ref": "ImuCapability" }
+      }
+    },
+    "CommCapabilities": {
+      "kind": "object",
+      "properties": {
+        "module": { "kind": "string" },
+        "gps": { "kind": "ref", "ref": "FieldList" },
+        "signal": { "kind": "ref", "ref": "FieldList" }
+      }
+    },
+    "IoCapabilities": {
+      "kind": "object",
+      "properties": {
+        "schemaVersion": { "kind": "literal", "value": 1, "required": true },
+        "media": { "kind": "ref", "ref": "MediaCapabilities" },
+        "sensors": { "kind": "ref", "ref": "SensorsCapabilities" },
+        "comm": { "kind": "ref", "ref": "CommCapabilities" },
+        "system": { "kind": "ref", "ref": "FieldList" }
+      }
+    }
+  }
+}

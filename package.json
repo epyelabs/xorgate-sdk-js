@@ -1,0 +1,68 @@
+{
+  "name": "@xorgate/sdk",
+  "version": "0.1.0",
+  "description": "Server-side JavaScript and TypeScript client for the xorgate platform API.",
+  "license": "MIT",
+  "author": "Epye Labs",
+  "homepage": "https://docs.xorgate.io/docs/backend-sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/epyelabs/xorgate-sdk-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/epyelabs/xorgate-sdk-js/issues"
+  },
+  "keywords": [
+    "xorgate",
+    "iot",
+    "telemetry",
+    "fleet",
+    "devices",
+    "sdk"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "default": "./dist/esm/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "npm run clean && npm run build:esm && npm run build:cjs && node scripts/finalize-build.mjs",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "check:examples": "tsc -p tsconfig.examples.json",
+    "check:generated": "node scripts/generate.mjs --check",
+    "ci": "npm run check:generated && npm run typecheck && npm run check:examples && npm run build && npm test && npm run verify:tarball",
+    "clean": "rm -rf dist .tmp",
+    "generate": "node scripts/generate.mjs",
+    "prepack": "npm run build",
+    "test": "node scripts/run-tests.mjs",
+    "test:integration": "node scripts/run-tests.mjs --integration",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:tarball": "node scripts/verify-tarball.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

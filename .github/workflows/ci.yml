@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 20 is the floor `engines` promises; 22 is what most consumers run.
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+
+      # The generator drift check. `src/generated/` is produced from `vendor/`,
+      # and this fails if the two disagree, i.e. if someone hand-edited a
+      # generated file or vendored a new contract without regenerating.
+      - run: npm run check:generated
+
+      - run: npm run typecheck
+
+      # Every example on the docs site, compiled against the real package.
+      - run: npm run check:examples
+
+      - run: npm run build
+      - run: npm test
+
+      # Zero runtime dependencies, checked against the packed artifact rather
+      # than against package.json.
+      - run: npm run verify:tarball
+
+  integration:
+    # Runs against PRODUCTION with the suite's own key, so it is not run for a
+    # fork's pull request. It creates and destroys its own workspace per run.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
+        env:
+          XORGATE_API_KEY: ${{ secrets.XORGATE_API_KEY }}
+          XORGATE_ORG_ID: ${{ secrets.XORGATE_ORG_ID }}
+          XORGATE_TEST_DEVICE_ID: ${{ secrets.XORGATE_TEST_DEVICE_ID }}

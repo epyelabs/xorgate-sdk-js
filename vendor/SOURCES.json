@@ -1,0 +1,20 @@
+{
+  "$comment": "What each vendored contract was copied or derived from, and the sha256 of that upstream file at the time. xorgate-core-service pins the same hashes in test/sdk-vendor-drift.test.ts, so an upstream change fails there and names this directory.",
+  "upstreamRepo": "epyelabs/xorgate-core-service",
+  "vendored": [
+    {
+      "file": "config-contract.json",
+      "relation": "verbatim copy",
+      "sourceFile": "src/config-registry/config-contract.json",
+      "sourceSha256": "fa752d7f04ef71cb5c6c0438fd5920c838a96a36266249144f662f16d95dae71",
+      "vendoredAt": "2026-08-22"
+    },
+    {
+      "file": "io-capabilities.schema.json",
+      "relation": "hand-derived structural mirror of a zod schema",
+      "sourceFile": "src/schemas/capabilities.ts",
+      "sourceSha256": "ac24a8733fbd89032ebfc353e4418264e268f3b2b1ad35b177b16080721a33d6",
+      "vendoredAt": "2026-08-22"
+    }
+  ]
+}
