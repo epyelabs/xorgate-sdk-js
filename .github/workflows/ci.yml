@@ -55,3 +55,9 @@ jobs:
           XORGATE_API_KEY: ${{ secrets.XORGATE_API_KEY }}
           XORGATE_ORG_ID: ${{ secrets.XORGATE_ORG_ID }}
           XORGATE_TEST_DEVICE_ID: ${{ secrets.XORGATE_TEST_DEVICE_ID }}
+          # Turns "unconfigured" from a skip into a hard failure. The suites skip
+          # themselves when they have no credential, which is right locally and
+          # wrong here: `node --test` exits 0 for a skipped suite, so without
+          # this the job goes green having asserted nothing. The first run on
+          # `main` did exactly that, reporting `# tests 0` and `success`.
+          XORGATE_REQUIRE_INTEGRATION: "1"

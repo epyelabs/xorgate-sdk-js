@@ -33,12 +33,14 @@ import {
   type XorgateClient,
 } from "../src/index.js";
 
-const apiKey = process.env["XORGATE_API_KEY"];
-const organizationId = process.env["XORGATE_ORG_ID"];
-const baseUrl = process.env["XORGATE_API_URL"];
-const testDeviceId = process.env["XORGATE_TEST_DEVICE_ID"];
-
-const configured = Boolean(apiKey && organizationId);
+import {
+  apiKey,
+  baseUrl,
+  deviceSkipReason,
+  organizationId,
+  skipReason,
+  testDeviceId,
+} from "./config.js";
 
 /** Names the suite's own rows unmistakably, so a leaked one is obvious. */
 const RUN_TAG = `sdk-it-${Date.now().toString(36)}`;
@@ -225,7 +227,7 @@ describe("integration: @xorgate/sdk against production", { skip: skipReason() },
     if (latest !== null) assert.ok(latest.version.length > 0);
   });
 
-  describe("read-only, against the shared production device", { skip: deviceSkip() }, () => {
+  describe("read-only, against the shared production device", { skip: deviceSkipReason() }, () => {
     it("reads the device and its config view without writing anything", async () => {
       const device = await xg.devices.get(testDeviceId!);
       assert.equal(device.id, testDeviceId);
@@ -347,13 +349,3 @@ describe("integration: @xorgate/sdk against production", { skip: skipReason() },
   });
 });
 
-function skipReason(): string | false {
-  if (configured) return false;
-  return "XORGATE_API_KEY and XORGATE_ORG_ID are unset. See .env.example; the key lives in AWS Secrets Manager at xorgate/integration-test-api-key (account 865609249890).";
-}
-
-function deviceSkip(): string | false {
-  if (!configured) return "not configured";
-  if (!testDeviceId) return "XORGATE_TEST_DEVICE_ID is unset, so the read-only device tests are skipped.";
-  return false;
-}
