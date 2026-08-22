@@ -31,10 +31,13 @@ import {
   type XorgateClient,
 } from "../src/index.js";
 
-const apiKey = process.env["XORGATE_API_KEY"];
-const organizationId = process.env["XORGATE_ORG_ID"];
-const baseUrl = process.env["XORGATE_API_URL"];
-const readDeviceId = process.env["XORGATE_TEST_DEVICE_ID"];
+import {
+  apiKey,
+  baseUrl,
+  organizationId,
+  skipReason,
+  testDeviceId as readDeviceId,
+} from "./config.js";
 
 const RUN_TAG = `sdk-wt-${Date.now().toString(36)}`;
 
@@ -330,7 +333,3 @@ describe("walkthrough: asset tracking, against production", { skip: skipReason()
   });
 });
 
-function skipReason(): string | false {
-  if (apiKey && organizationId) return false;
-  return "XORGATE_API_KEY and XORGATE_ORG_ID are unset. See .env.example.";
-}

@@ -71,6 +71,13 @@ real consumers use. Three rules, in order of how much damage breaking them does:
    `timeoutMs` below about 3000 anywhere in the suite.
 
 Credentials come from a gitignored `.env`; copy `.env.example` and fill it in.
+Without them the suite **skips itself**, which is right locally: `npm test`
+should not need a production key.
+
+In CI that same skip is a trap, because `node --test` exits 0 for a skipped
+suite and the job goes green having asserted nothing. So CI sets
+`XORGATE_REQUIRE_INTEGRATION=1`, under which "unconfigured" is a hard failure
+instead. `integration/config.ts` owns both behaviours.
 The key is the suite's own, stored in AWS Secrets Manager as
 `xorgate/integration-test-api-key`. Do not use a consumer's runtime key, and
 never commit either.
