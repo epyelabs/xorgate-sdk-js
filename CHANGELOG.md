@@ -3,7 +3,23 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
-## 0.1.0 — unreleased
+## 0.1.1
+
+### Fixed
+
+- **The client could serialize its own API key.** TypeScript's `private` is a
+  compile-time fiction, so `auth` was an ordinary enumerable property at runtime,
+  reachable from the client and from every resource module hanging off it.
+  `JSON.stringify(client)` printed the credential, and so would any structured
+  logger or error reporter handed the client. The credential-bearing fields are
+  now non-enumerable, and `XorgateClient` gains a `toJSON()` that returns
+  `{ baseUrl, organizationId, workspaceId }` and nothing else.
+
+  Nothing about the API surface changes and no behaviour depends on it, but
+  **0.1.0 should not be used**: it can leak a production credential into a log
+  line without anyone doing anything wrong.
+
+## 0.1.0
 
 The first implementation of the surface designed in
 `plans/done/xorgate-sdk-and-api/interface.d.ts`. Nothing before this existed as

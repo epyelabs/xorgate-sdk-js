@@ -1,4 +1,4 @@
-import { HttpCore, DEFAULT_BASE_URL } from "./http.js";
+import { HttpCore, DEFAULT_BASE_URL, hideProperties } from "./http.js";
 import { XorgateError } from "./errors.js";
 import { normalizeOrganization, normalizeUser, unwrap, unwrapList } from "./normalize.js";
 import { ApiKeysResource } from "./resources/api-keys.js";
@@ -90,6 +90,23 @@ class Client implements XorgateClient {
     this.deviceRegistrations = new DeviceRegistrationsResource(http, this.tenancy);
     this.media = new MediaResource(http, this.tenancy);
     this.telemetry = new TelemetryResource(http, this.tenancy);
+
+    // The credential itself is already unserializable (see `hideProperties`),
+    // so this is ergonomics rather than safety: without it, serializing a client
+    // dumps every resource module and the whole HTTP core with it.
+    hideProperties(this, ["http", "tenancy"]);
+  }
+
+  /**
+   * What a client is, for a log line. Everything else on the object is
+   * machinery, and the credential is not serializable at all.
+   */
+  toJSON(): { baseUrl: string; organizationId: string; workspaceId?: string } {
+    return {
+      baseUrl: this.baseUrl,
+      organizationId: this.organizationId,
+      ...(this.workspaceId ? { workspaceId: this.workspaceId } : {}),
+    };
   }
 
   get baseUrl(): string {

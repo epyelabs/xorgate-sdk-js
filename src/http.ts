@@ -18,7 +18,30 @@ export const DEFAULT_BASE_URL = "https://api.xorgate.io";
  */
 export const VERSION_PREFIX = "/v1";
 
-export const SDK_VERSION = "0.1.0";
+export const SDK_VERSION = "0.1.1";
+
+/**
+ * Make properties non-enumerable, so they cannot be serialized.
+ *
+ * TypeScript's `private` is a compile-time fiction: `private readonly auth` is
+ * an ordinary enumerable property at runtime, reachable from the client, from
+ * every resource module hanging off it, and therefore from anything that walks
+ * the object. `JSON.stringify(client)` used to print the API key, and so did any
+ * structured logger or error reporter handed the client. That is exactly the
+ * leak this SDK tells people it does not have.
+ *
+ * The fields stay writable and readable; they simply stop showing up in
+ * `Object.keys`, `JSON.stringify` and `console.log`. Applied to the two fields
+ * that can hold a secret, which is the whole of it: the credential lives in
+ * exactly one object.
+ */
+export function hideProperties(target: object, keys: string[]): void {
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    if (!descriptor) continue;
+    Object.defineProperty(target, key, { ...descriptor, enumerable: false });
+  }
+}
 
 export interface HttpCoreOptions {
   baseUrl?: string;
@@ -119,6 +142,10 @@ export class HttpCore {
     this.userAgent = options.userAgent
       ? `xorgate-sdk-js/${SDK_VERSION} ${options.userAgent}`
       : `xorgate-sdk-js/${SDK_VERSION}`;
+
+    // `auth` holds the credential. `headers` is caller-supplied and may hold a
+    // second one. Neither is ever serializable from here on.
+    hideProperties(this, ["auth", "extraHeaders"]);
   }
 
   /**

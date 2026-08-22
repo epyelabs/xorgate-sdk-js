@@ -1,6 +1,6 @@
 {
   "name": "@xorgate/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Server-side JavaScript and TypeScript client for the xorgate platform API.",
   "license": "MIT",
   "author": "Epye Labs",

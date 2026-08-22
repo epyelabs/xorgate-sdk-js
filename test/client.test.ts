@@ -201,3 +201,56 @@ test("request() is a raw escape hatch: no unwrapping, no normalization", async (
   assert.equal(raw.device_models.length, 1);
   assert.equal(stub.calls[0]!.headers["x-organization-id"], "org-1");
 });
+
+test("the client cannot serialize the credential, however you reach for it", () => {
+  const xg = createClient({
+    auth: { apiKey: "xg_SUPERSECRET" },
+    organizationId: "org-1",
+    workspaceId: "ws-1",
+    headers: { "X-My-Other-Secret": "hunter2" },
+    fetch: stubFetch().fetch,
+  });
+
+  // The whole point: `private` is compile-time only, so before this was fixed
+  // `JSON.stringify(client)` printed the API key, and so did any structured
+  // logger or error reporter handed the client.
+  const serialized = JSON.stringify(xg);
+  assert.ok(!serialized.includes("xg_SUPERSECRET"), "JSON.stringify leaked the key");
+  assert.ok(!serialized.includes("hunter2"), "JSON.stringify leaked a caller header");
+
+  // And through a resource module, which is the deeper path: every one of them
+  // holds a reference to the same HTTP core.
+  const deep = JSON.stringify({ devices: xg.devices, telemetry: xg.telemetry });
+  assert.ok(!deep.includes("xg_SUPERSECRET"), "a resource module leaked the key");
+
+  // toJSON keeps the useful part.
+  assert.deepEqual(JSON.parse(serialized), {
+    baseUrl: "https://api.xorgate.io",
+    organizationId: "org-1",
+    workspaceId: "ws-1",
+  });
+
+  // Non-enumerable, not deleted: the client still works.
+  assert.equal(xg.organizationId, "org-1");
+  assert.equal(xg.forWorkspace("ws-2").workspaceId, "ws-2");
+});
+
+test("a derived client is as unserializable as its parent", () => {
+  const xg = createClient({
+    auth: { apiKey: "xg_SUPERSECRET" },
+    organizationId: "org-1",
+    fetch: stubFetch().fetch,
+  });
+  for (const derived of [xg.forOrganization("org-2"), xg.forWorkspace("ws-9")]) {
+    assert.ok(!JSON.stringify(derived).includes("xg_SUPERSECRET"));
+  }
+});
+
+test("a bootstrap client does not leak its credential either", () => {
+  const boot = createBootstrapClient({
+    auth: { apiKey: "xg_SUPERSECRET" },
+    fetch: stubFetch().fetch,
+  });
+  assert.ok(!JSON.stringify(boot).includes("xg_SUPERSECRET"));
+  assert.ok(!JSON.stringify(boot.forOrganization("org-1")).includes("xg_SUPERSECRET"));
+});
