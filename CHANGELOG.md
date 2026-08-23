@@ -3,6 +3,22 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.1.2
+
+### Fixed
+
+- **The default `fetch` threw "Illegal invocation" in browsers.** The core
+  stored a detached reference to `globalThis.fetch` and invoked it as a method
+  of its own instance. Browsers implement `fetch` as a Window method and refuse
+  any other receiver, so every request from a browser client that did not pass
+  its own `fetch` failed with
+  `NETWORK ...: Failed to execute 'fetch' on 'Window': Illegal invocation`.
+  Node's `fetch` does not care about its receiver, which is why 93 unit tests
+  and the production integration suite never saw it — the first real browser
+  consumer (xorgate-web's Phase 4 dogfood) did, on its first request. The
+  global is now bound before being stored; a caller-supplied `fetch` is used
+  exactly as given.
+
 ## 0.1.1
 
 ### Fixed
