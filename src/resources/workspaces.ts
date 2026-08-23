@@ -1,9 +1,11 @@
-import { iterateFixed } from "../pagination.js";
-import { unwrap, unwrapList } from "../normalize.js";
+import { drain, iteratePaged } from "../pagination.js";
+import { unwrap, unwrapPage } from "../normalize.js";
 import type { HttpCore } from "../http.js";
 import type {
   CreateWorkspaceInput,
   IterateOptions,
+  ListWorkspacesParams,
+  Page,
   UpdateWorkspaceInput,
   Workspace,
 } from "../types.js";
@@ -15,18 +17,45 @@ export class WorkspacesResource {
     private readonly tenancy: Tenancy,
   ) {}
 
-  /** Unpaginated: every workspace in the active organization. */
-  async list(): Promise<Workspace[]> {
-    const body = await this.http.request("GET", "/workspaces", {}, this.tenancy);
-    return unwrapList<Workspace>(body, "workspaces");
+  private async page(params: ListWorkspacesParams = {}): Promise<Page<Workspace>> {
+    const body = await this.http.request(
+      "GET",
+      "/workspaces",
+      {
+        query: {
+          limit: params.limit,
+          offset: params.offset,
+          order: params.order,
+          sort: params.sort,
+        },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return unwrapPage<Workspace>(body, "workspaces");
   }
 
-  listAll(): Promise<Workspace[]> {
-    return this.list();
+  /**
+   * One request: up to `limit` (default 100) workspaces in the active
+   * organization; `listAll()` is the guaranteed-complete form.
+   */
+  async list(params: ListWorkspacesParams = {}): Promise<Workspace[]> {
+    return (await this.page(params)).items;
   }
 
-  iterate(options?: IterateOptions): AsyncIterableIterator<Workspace> {
-    return iterateFixed(() => this.list(), options);
+  listAll(
+    params: ListWorkspacesParams & IterateOptions = {},
+  ): Promise<Workspace[]> {
+    return drain(this.iterate(params));
+  }
+
+  iterate(
+    params: ListWorkspacesParams & IterateOptions = {},
+  ): AsyncIterableIterator<Workspace> {
+    return iteratePaged<Workspace>(
+      (limit, offset) => this.page({ ...params, limit, offset }),
+      { ...params, defaultPageSize: params.limit ?? 100 },
+    );
   }
 
   async get(id: string): Promise<Workspace> {

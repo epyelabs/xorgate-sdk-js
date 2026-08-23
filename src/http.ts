@@ -485,8 +485,14 @@ function errorFromResponse(
 ): XorgateError {
   const envelope =
     typeof parsed === "object" && parsed !== null
-      ? (parsed as { error?: { code?: unknown; message?: unknown; details?: unknown } })
-          .error
+      ? (parsed as {
+          error?: {
+            code?: unknown;
+            message?: unknown;
+            details?: unknown;
+            requestId?: unknown;
+          };
+        }).error
       : undefined;
 
   const apiCode =
@@ -500,6 +506,10 @@ function errorFromResponse(
   const details =
     envelope && typeof envelope.details === "object" && envelope.details !== null
       ? (envelope.details as Record<string, unknown>)
+      : undefined;
+  const serverRequestId =
+    envelope && typeof envelope.requestId === "string"
+      ? envelope.requestId
       : undefined;
 
   // API Gateway throttling answers `{"message":"Too Many Requests"}` with no
@@ -520,6 +530,7 @@ function errorFromResponse(
     method,
     url,
     requestId,
+    ...(serverRequestId !== undefined ? { serverRequestId } : {}),
     ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     ...(hintFor(code) ? { hint: hintFor(code) } : {}),
   });
