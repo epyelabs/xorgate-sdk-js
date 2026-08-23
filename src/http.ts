@@ -111,7 +111,16 @@ export class HttpCore {
     }
     this.auth = options.auth;
 
-    const fetchImpl = options.fetch ?? (globalThis.fetch as FetchLike | undefined);
+    // The global must be BOUND: browsers implement `fetch` as a Window method,
+    // and calling a detached reference (which `this.fetchImpl(...)` is) throws
+    // "Illegal invocation". Node's fetch does not care, which is why every
+    // Node-side suite passed while the first real browser consumer broke.
+    // A caller-supplied fetch is used as given — its binding is its business.
+    const fetchImpl =
+      options.fetch ??
+      (typeof globalThis.fetch === "function"
+        ? (globalThis.fetch.bind(globalThis) as FetchLike)
+        : undefined);
     if (typeof fetchImpl !== "function") {
       throw invalidConfig(
         "No global `fetch` in this runtime. Pass one as `fetch` in the client options.",

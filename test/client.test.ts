@@ -254,3 +254,37 @@ test("a bootstrap client does not leak its credential either", () => {
   assert.ok(!JSON.stringify(boot).includes("xg_SUPERSECRET"));
   assert.ok(!JSON.stringify(boot.forOrganization("org-1")).includes("xg_SUPERSECRET"));
 });
+
+test("the default global fetch is called with a usable `this` (browser Illegal invocation)", async (t) => {
+  // Browsers implement fetch as a Window method: a detached reference invoked
+  // with any other receiver throws "Illegal invocation". Node's fetch is
+  // receiver-agnostic, so this simulates the browser's constraint to pin the
+  // core's obligation to BIND the global before storing it.
+  const original = globalThis.fetch;
+  const sentinel = { called: 0 };
+  function browserishFetch(this: unknown, ..._args: unknown[]): Promise<Response> {
+    if (this !== globalThis) {
+      throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+    }
+    sentinel.called += 1;
+    return Promise.resolve(
+      new Response(JSON.stringify({ workspaces: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }
+  globalThis.fetch = browserishFetch as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+
+  const xg = createClient({
+    auth: { apiKey: "xg_test" },
+    organizationId: "org-1",
+    // no `fetch` option: the point is the core's handling of the GLOBAL
+  });
+  const workspaces = await xg.workspaces.list();
+  assert.deepEqual(workspaces, []);
+  assert.equal(sentinel.called, 1);
+});
