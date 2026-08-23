@@ -73,13 +73,14 @@ export function unwrapList<T>(body: unknown, ...keys: string[]): T[] {
   return value as T[];
 }
 
-/** Unwrap `{ items, page }` into a `Page<T>`. */
+/** Unwrap `{ items, page }` into a `Page<T>`. Accepts alternate envelope keys. */
 export function unwrapPage<T>(
   body: unknown,
-  itemsKey: string,
+  itemsKeys: string | readonly string[],
   map: (item: unknown) => T = (item) => item as T,
 ): Page<T> {
-  const items = unwrapList<unknown>(body, itemsKey).map(map);
+  const keys = typeof itemsKeys === "string" ? [itemsKeys] : itemsKeys;
+  const items = unwrapList<unknown>(body, ...keys).map(map);
   const row = asRecord(body, "the response body");
   return { items, page: normalizePageMeta(row["page"], items.length) };
 }

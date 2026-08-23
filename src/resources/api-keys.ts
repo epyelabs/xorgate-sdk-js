@@ -1,11 +1,13 @@
-import { iterateFixed } from "../pagination.js";
-import { unwrap, unwrapList } from "../normalize.js";
+import { drain, iteratePaged } from "../pagination.js";
+import { unwrap, unwrapPage } from "../normalize.js";
 import type { HttpCore } from "../http.js";
 import type {
   ApiKey,
   CreateApiKeyInput,
   CreatedApiKey,
   IterateOptions,
+  ListApiKeysParams,
+  Page,
 } from "../types.js";
 import type { Tenancy } from "./tenancy.js";
 
@@ -20,17 +22,43 @@ export class ApiKeysResource {
     private readonly tenancy: Tenancy,
   ) {}
 
-  async list(): Promise<ApiKey[]> {
-    const body = await this.http.request("GET", "/api-keys", {}, this.tenancy);
-    return unwrapList<ApiKey>(body, "api_keys", "apiKeys");
+  private async page(params: ListApiKeysParams = {}): Promise<Page<ApiKey>> {
+    const body = await this.http.request(
+      "GET",
+      "/api-keys",
+      {
+        query: {
+          limit: params.limit,
+          offset: params.offset,
+          order: params.order,
+          sort: params.sort,
+        },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return unwrapPage<ApiKey>(body, ["api_keys", "apiKeys"]);
   }
 
-  listAll(): Promise<ApiKey[]> {
-    return this.list();
+  /**
+   * One request: up to `limit` (default 100) keys, revoked and expired ones
+   * included; `listAll()` is the guaranteed-complete form.
+   */
+  async list(params: ListApiKeysParams = {}): Promise<ApiKey[]> {
+    return (await this.page(params)).items;
   }
 
-  iterate(options?: IterateOptions): AsyncIterableIterator<ApiKey> {
-    return iterateFixed(() => this.list(), options);
+  listAll(params: ListApiKeysParams & IterateOptions = {}): Promise<ApiKey[]> {
+    return drain(this.iterate(params));
+  }
+
+  iterate(
+    params: ListApiKeysParams & IterateOptions = {},
+  ): AsyncIterableIterator<ApiKey> {
+    return iteratePaged<ApiKey>(
+      (limit, offset) => this.page({ ...params, limit, offset }),
+      { ...params, defaultPageSize: params.limit ?? 100 },
+    );
   }
 
   /**

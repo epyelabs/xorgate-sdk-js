@@ -3,6 +3,42 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.2.0
+
+Mirrors the platform's API-productization release (pagination consistency,
+`requestId` in error bodies, membership role updates). Works against older
+API deployments too: every addition degrades gracefully.
+
+### Added
+
+- **`memberships.updateRole(membershipId, role)`**, for the new
+  `PATCH /v1/memberships/{id}`. Changes a role in place; the API gates
+  owner-level changes to owners and refuses to demote the last owner (403),
+  so an organization cannot lock itself out.
+- **The five formerly-unpaginated collections now speak the list dialect.**
+  `organizations`, `memberships`, `workspaces`, `deviceModels` and `apiKeys`
+  `list()` all take optional `{ limit, offset, order, sort, signal }` (same
+  shape as `devices.list()`), and their `iterate()` / `listAll()` now walk
+  the server's new `page` blocks instead of assuming one response holds
+  everything. Code written against `iterate()`/`listAll()` keeps working
+  unchanged, which is exactly what those methods existed for; `list()` still
+  returns a plain array (one request, up to `limit` rows, default 100).
+- **`XorgateError.serverRequestId`**: the API's own request id, read from
+  `error.requestId` in the body. This is the id the platform's access log
+  records, so it is the one to quote in a support ticket. The existing
+  `requestId` field (the client-generated `X-Request-ID`) is unchanged.
+
+### Changed
+
+- **A `limit` above an endpoint's maximum is now a 400 from the API**, where
+  the paginated endpoints used to clamp silently. Nothing changes in the SDK
+  itself, but an `iterate({ pageSize })` above 500 that used to be clamped
+  will now surface a `BAD_REQUEST` error.
+- The API now answers its own unhandled failures with a
+  `SERVER_ERROR`-coded envelope (previously a bare gateway 500). The SDK
+  already named envelope-less 5xxs `SERVER_ERROR`, so consumers see the same
+  code either way, now with `serverRequestId` attached.
+
 ## 0.1.2
 
 ### Fixed

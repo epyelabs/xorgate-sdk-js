@@ -217,9 +217,32 @@ describe("integration: @xorgate/sdk against production", { skip: skipReason() },
       (e: unknown) => {
         assert.ok(isXorgateError(e));
         assert.equal(e.code, "NOT_FOUND");
+        // API productization: every error body carries the gateway request id.
+        assert.equal(typeof e.serverRequestId, "string");
         return true;
       },
     );
+  });
+
+  it("workspaces speak the list dialect (API productization)", async () => {
+    // The org holds at least the two named consumer workspaces plus this
+    // run's own, so pageSize 1 forces real page walking against the new
+    // page blocks.
+    const seen: number[] = [];
+    const all = await xg.workspaces.listAll({
+      pageSize: 1,
+      onPage: (p) => seen.push(p.limit),
+    });
+    assert.ok(all.length >= 2, `expected >= 2 workspaces, got ${all.length}`);
+    assert.ok(seen.length >= 2, "expected more than one page request");
+    assert.ok(seen.every((l) => l === 1), "server echoes the requested limit");
+
+    // A limit above the maximum is a 400, never a silent clamp.
+    await assert.rejects(xg.workspaces.list({ limit: 501 }), (e: unknown) => {
+      assert.ok(isXorgateError(e));
+      assert.equal(e.code, "BAD_REQUEST");
+      return true;
+    });
   });
 
   it("reads the fleet-wide latest agent build, or null", async () => {

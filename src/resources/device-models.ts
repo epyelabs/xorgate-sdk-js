@@ -1,12 +1,14 @@
-import { iterateFixed } from "../pagination.js";
+import { drain, iteratePaged } from "../pagination.js";
 import { parseIoCapabilities } from "../capabilities.js";
-import { unwrap, unwrapList } from "../normalize.js";
+import { unwrap, unwrapPage } from "../normalize.js";
 import type { HttpCore } from "../http.js";
 import type {
   CreateDeviceModelInput,
   DeviceModel,
   DeviceModelWriteOptions,
   IterateOptions,
+  ListDeviceModelsParams,
+  Page,
   UpdateDeviceModelInput,
 } from "../types.js";
 import type { Tenancy } from "./tenancy.js";
@@ -23,17 +25,47 @@ export class DeviceModelsResource {
     private readonly tenancy: Tenancy,
   ) {}
 
-  async list(): Promise<DeviceModel[]> {
-    const body = await this.http.request("GET", "/device-models", {}, this.tenancy);
-    return unwrapList<DeviceModel>(body, "device_models", "deviceModels");
+  private async page(
+    params: ListDeviceModelsParams = {},
+  ): Promise<Page<DeviceModel>> {
+    const body = await this.http.request(
+      "GET",
+      "/device-models",
+      {
+        query: {
+          limit: params.limit,
+          offset: params.offset,
+          order: params.order,
+          sort: params.sort,
+        },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return unwrapPage<DeviceModel>(body, ["device_models", "deviceModels"]);
   }
 
-  listAll(): Promise<DeviceModel[]> {
-    return this.list();
+  /**
+   * One request: up to `limit` (default 100) catalog rows; `listAll()` is the
+   * guaranteed-complete form.
+   */
+  async list(params: ListDeviceModelsParams = {}): Promise<DeviceModel[]> {
+    return (await this.page(params)).items;
   }
 
-  iterate(options?: IterateOptions): AsyncIterableIterator<DeviceModel> {
-    return iterateFixed(() => this.list(), options);
+  listAll(
+    params: ListDeviceModelsParams & IterateOptions = {},
+  ): Promise<DeviceModel[]> {
+    return drain(this.iterate(params));
+  }
+
+  iterate(
+    params: ListDeviceModelsParams & IterateOptions = {},
+  ): AsyncIterableIterator<DeviceModel> {
+    return iteratePaged<DeviceModel>(
+      (limit, offset) => this.page({ ...params, limit, offset }),
+      { ...params, defaultPageSize: params.limit ?? 100 },
+    );
   }
 
   async get(id: string): Promise<DeviceModel> {

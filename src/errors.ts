@@ -7,6 +7,8 @@ import type { HttpMethod } from "./types.js";
  * workspace-scope codes arrived with `plans/done/platform-auth-and-live-plane/`
  * and are already documented on the docs site's Errors page. `RATE_LIMITED` is
  * the SDK's name for a bare gateway 429, which carries no code of its own.
+ * `SERVER_ERROR` names any 5xx without a code; since API productization the
+ * API also emits it itself, in a full envelope, for an unhandled failure.
  */
 export type XorgateApiErrorCode =
   | "UNAUTHORIZED"
@@ -57,6 +59,8 @@ export interface XorgateErrorInit {
   method?: HttpMethod;
   url?: string;
   requestId?: string;
+  /** The API's own request id, from `error.requestId` in the body. */
+  serverRequestId?: string;
   hint?: string;
   retryable?: boolean;
   /** Seconds to wait, parsed from a `Retry-After` header. */
@@ -91,10 +95,17 @@ export class XorgateError extends Error {
   /** Request URL with the query string, never with credentials. */
   readonly url?: string;
   /**
-   * The `X-Request-ID` the SDK generated and sent. The API does not echo one
-   * back or put one in the error body yet, so this is the client's copy.
+   * The `X-Request-ID` the SDK generated and sent. The API does not echo it,
+   * so this is the client's copy, useful for correlating your own logs.
    */
   readonly requestId?: string;
+  /**
+   * The API Gateway request id from the error body (`error.requestId`), the
+   * id the platform's own access log records. QUOTE THIS ONE in a support
+   * ticket. Absent when the response never reached the API (network failures,
+   * gateway-generated 429s) or predates API productization.
+   */
+  readonly serverRequestId?: string;
   /** SDK-authored context the API cannot know. */
   readonly hint?: string;
   readonly retryable: boolean;
@@ -116,6 +127,7 @@ export class XorgateError extends Error {
     if (init.method !== undefined) this.method = init.method;
     if (init.url !== undefined) this.url = init.url;
     if (init.requestId !== undefined) this.requestId = init.requestId;
+    if (init.serverRequestId !== undefined) this.serverRequestId = init.serverRequestId;
     if (init.hint !== undefined) this.hint = init.hint;
     if (init.retryAfterMs !== undefined) this.retryAfterMs = init.retryAfterMs;
     this.retryable = init.retryable ?? defaultRetryable(init.code, init.status);

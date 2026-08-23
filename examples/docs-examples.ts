@@ -149,7 +149,7 @@ export async function threeWays() {
   page.items;
   page.page;
 
-  const workspaces = await xg.workspaces.list();
+  const workspaces = await xg.workspaces.list({ limit: 50 });
 
   for await (const device of xg.devices.iterate({ status: "online" })) {
     console.log(device.serial);
@@ -235,6 +235,7 @@ export function logging(e: unknown) {
       method: e.method,
       url: e.url,
       requestId: e.requestId,
+      serverRequestId: e.serverRequestId,
       details: e.details,
     },
     e.message,
@@ -265,6 +266,11 @@ export async function roster() {
   for (const m of await xg.memberships.list()) {
     console.log(m.role, m.user?.email ?? m.userId);
   }
+}
+
+export async function changeRole() {
+  const membership = await xg.memberships.updateRole("m-9c2f...", "admin");
+  return membership;
 }
 
 export async function addMembers() {

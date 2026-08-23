@@ -1,10 +1,12 @@
-import { iterateFixed } from "../pagination.js";
-import { normalizeOrganization, unwrap, unwrapList } from "../normalize.js";
+import { drain, iteratePaged } from "../pagination.js";
+import { normalizeOrganization, unwrap, unwrapPage } from "../normalize.js";
 import type { HttpCore } from "../http.js";
 import type {
   CreateOrganizationInput,
   IterateOptions,
+  ListOrganizationsParams,
   Organization,
+  Page,
   UpdateOrganizationInput,
 } from "../types.js";
 import type { Tenancy } from "./tenancy.js";
@@ -15,18 +17,48 @@ export class OrganizationsResource {
     private readonly tenancy: Tenancy,
   ) {}
 
-  /** Unpaginated. `iterate()` exists so a future `page` block is a no-op here. */
-  async list(): Promise<Organization[]> {
-    const body = await this.http.request("GET", "/organizations", {}, this.tenancy);
-    return unwrapList<unknown>(body, "organizations").map(normalizeOrganization);
+  private async page(
+    params: ListOrganizationsParams = {},
+  ): Promise<Page<Organization>> {
+    const body = await this.http.request(
+      "GET",
+      "/organizations",
+      {
+        query: {
+          limit: params.limit,
+          offset: params.offset,
+          order: params.order,
+          sort: params.sort,
+        },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return unwrapPage<Organization>(body, "organizations", normalizeOrganization);
   }
 
-  listAll(): Promise<Organization[]> {
-    return this.list();
+  /**
+   * One request: up to `limit` (default 100) organizations. A user belongs to
+   * a handful at most, so this is effectively "all of them"; `listAll()` is
+   * the guaranteed-complete form.
+   */
+  async list(params: ListOrganizationsParams = {}): Promise<Organization[]> {
+    return (await this.page(params)).items;
   }
 
-  iterate(options?: IterateOptions): AsyncIterableIterator<Organization> {
-    return iterateFixed(() => this.list(), options);
+  listAll(
+    params: ListOrganizationsParams & IterateOptions = {},
+  ): Promise<Organization[]> {
+    return drain(this.iterate(params));
+  }
+
+  iterate(
+    params: ListOrganizationsParams & IterateOptions = {},
+  ): AsyncIterableIterator<Organization> {
+    return iteratePaged<Organization>(
+      (limit, offset) => this.page({ ...params, limit, offset }),
+      { ...params, defaultPageSize: params.limit ?? 100 },
+    );
   }
 
   /** `{id}` must be the ACTIVE organization. Read another by switching clients. */

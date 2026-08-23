@@ -159,6 +159,38 @@ export interface ListParams {
   order?: SortOrder;
 }
 
+/**
+ * The list dialect on the five collections that gained a `page` block with API
+ * productization (organizations, memberships, workspaces, device models, API
+ * keys). Same `limit`/`offset`/`order`/`sort` params as `devices.list()`; a
+ * `limit` above 500 is a 400, never a silent clamp.
+ */
+export interface ListOrganizationsParams extends ListParams {
+  sort?: "createdAt" | "name";
+  signal?: AbortSignal;
+}
+
+export interface ListMembershipsParams extends ListParams {
+  /** Default order is ASCENDING by join date, unlike every other list. */
+  sort?: "createdAt" | "role";
+  signal?: AbortSignal;
+}
+
+export interface ListWorkspacesParams extends ListParams {
+  sort?: "updatedAt" | "createdAt" | "name";
+  signal?: AbortSignal;
+}
+
+export interface ListDeviceModelsParams extends ListParams {
+  sort?: "createdAt" | "name";
+  signal?: AbortSignal;
+}
+
+export interface ListApiKeysParams extends ListParams {
+  sort?: "createdAt" | "name";
+  signal?: AbortSignal;
+}
+
 export interface IterateOptions {
   /**
    * Called once per underlying HTTP page, before its items are yielded. The
