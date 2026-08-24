@@ -64,11 +64,86 @@ test("the failure that costs you every camera: a video entry with no codec", () 
   assert.deepEqual(result.issues, [{ path: "media.video[0].codec", message: "Required" }]);
 });
 
-test("schemaVersion is a literal 1, not any number", () => {
-  assert.equal(validateIoCapabilities({ schemaVersion: 2 }).valid, false);
+test("schemaVersion dispatches: 1 and 2 are known, everything else is not", () => {
+  // A bare v2 doc is invalid too — but for a v2 reason (system is required).
+  const bareV2 = validateIoCapabilities({ schemaVersion: 2 });
+  assert.equal(bareV2.valid, false);
+  assert.deepEqual(bareV2.issues.map((i) => i.path), ["system"]);
+  assert.equal(validateIoCapabilities({ schemaVersion: 3 }).valid, false);
   assert.equal(validateIoCapabilities({}).valid, false);
   assert.equal(validateIoCapabilities(null).valid, false);
   assert.equal(validateIoCapabilities("nonsense").valid, false);
+});
+
+// ---- schemaVersion 2 (cm4-support) ----------------------------------------
+
+/** The seeded Argus CM4 Rev1 row, near enough. */
+const CM4: IoCapabilities = {
+  schemaVersion: 2,
+  system: {
+    platform: "rpi-cm4",
+    encoder: "hw-h264",
+    rails: false,
+    statusLed: null,
+    fields: ["cpu_usage", "cpu_temp", "ram_usage", "disk_usage", "throttled"],
+  },
+  sensors: { imu: { model: "bno085", accel: ["x", "y", "z"] } },
+  comm: { module: "4g-lte", gps: { fields: ["lat", "lon"] }, signal: { fields: ["rssi"] } },
+  media: {
+    audio: [],
+    video: [
+      { key: "cam0", codec: "h264", connector: "csi0", sensor: "imx290", label: "Front" },
+    ],
+  },
+};
+
+test("a v2 document validates, nullable statusLed included", () => {
+  const result = validateIoCapabilities(CM4);
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.issues, []);
+  // A wired LED validates too.
+  const led = {
+    ...CM4,
+    system: { ...(CM4 as { system: object }).system, statusLed: { r: 12, g: 21, b: 16 } },
+  };
+  assert.equal(validateIoCapabilities(led).valid, true);
+});
+
+test("v2 enums are closed: a typo'd platform or encoder is an issue at its path", () => {
+  const badPlatform = validateIoCapabilities({
+    schemaVersion: 2,
+    system: { platform: "jetson" },
+  });
+  assert.equal(badPlatform.valid, false);
+  assert.deepEqual(badPlatform.issues.map((i) => i.path), ["system.platform"]);
+
+  const badEncoder = validateIoCapabilities({
+    schemaVersion: 2,
+    system: { platform: "rpi-cm4", encoder: "av1" },
+  });
+  assert.equal(badEncoder.valid, false);
+  assert.deepEqual(badEncoder.issues.map((i) => i.path), ["system.encoder"]);
+});
+
+test("v2 video entries require connector and sensor", () => {
+  const result = validateIoCapabilities({
+    schemaVersion: 2,
+    system: { platform: "rpi-cm4" },
+    media: { video: [{ key: "cam0", codec: "h264" }] },
+  });
+  assert.equal(result.valid, false);
+  assert.deepEqual(
+    result.issues.map((i) => i.path).sort(),
+    ["media.video[0].connector", "media.video[0].sensor"],
+  );
+});
+
+test("videoStreamKeys and declaredMetrics read v2 documents unchanged", () => {
+  assert.deepEqual(videoStreamKeys(model(CM4)), ["cam0"]);
+  const metrics = declaredMetrics(model(CM4));
+  assert.ok(metrics.includes("system.cpu_temp"));
+  assert.ok(metrics.includes("imu.accel_x"));
+  assert.ok(metrics.includes("lte.rssi"));
 });
 
 test("issue paths point at the exact element, so a form can highlight it", () => {

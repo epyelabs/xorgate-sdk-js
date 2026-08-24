@@ -1,7 +1,7 @@
 {
-  "$comment": "Hand-derived from xorgate-core-service src/schemas/capabilities.ts (the zod schema provisioning parses with). This file is the SDK's copy of that contract; scripts/generate.mjs turns it into src/generated/capabilities.ts. When capabilities.ts changes upstream, xorgate-core-service's test/sdk-vendor-drift.test.ts fails and points here.",
+  "$comment": "Hand-derived from xorgate-core-service src/schemas/capabilities.ts (the zod schema provisioning parses with). This file is the SDK's copy of that contract; scripts/generate.mjs turns it into src/generated/capabilities.ts. When capabilities.ts changes upstream, xorgate-core-service's test/sdk-vendor-drift.test.ts fails and points here. schemaVersion 2 (cm4-support plan) adds the platform facts the device agent turns into mechanism: system.platform/encoder/rails/statusLed, per-video connector+sensor, sensors.imu.model. The root dispatches on schemaVersion, mirroring the upstream z.discriminatedUnion; statusLed is nullable, which the generated checker's null-as-absent rule already covers.",
   "$sourceFile": "src/schemas/capabilities.ts",
-  "$sourceSha256": "ac24a8733fbd89032ebfc353e4418264e268f3b2b1ad35b177b16080721a33d6",
+  "$sourceSha256": "76101abaf26dd247563ef15ca57950b61abe3f854a6f7e5fc600c513ec93858f",
   "root": "IoCapabilities",
   "definitions": {
     "FieldList": {
@@ -15,6 +15,19 @@
       "properties": {
         "key": { "kind": "string", "required": true },
         "codec": { "kind": "string", "required": true },
+        "maxWidth": { "kind": "number", "int": true, "positive": true },
+        "maxHeight": { "kind": "number", "int": true, "positive": true },
+        "maxFps": { "kind": "number", "positive": true },
+        "label": { "kind": "string" }
+      }
+    },
+    "VideoCapabilityV2": {
+      "kind": "object",
+      "properties": {
+        "key": { "kind": "string", "required": true },
+        "codec": { "kind": "string", "required": true },
+        "connector": { "kind": "string", "required": true },
+        "sensor": { "kind": "string", "required": true },
         "maxWidth": { "kind": "number", "int": true, "positive": true },
         "maxHeight": { "kind": "number", "int": true, "positive": true },
         "maxFps": { "kind": "number", "positive": true },
@@ -41,6 +54,36 @@
         "rateHz": { "kind": "number", "positive": true }
       }
     },
+    "ImuCapabilityV2": {
+      "kind": "object",
+      "properties": {
+        "model": { "kind": "string" },
+        "axes": { "kind": "array", "items": { "kind": "string" } },
+        "accel": { "kind": "array", "items": { "kind": "string" } },
+        "quaternion": { "kind": "array", "items": { "kind": "string" } },
+        "euler": { "kind": "array", "items": { "kind": "string" } },
+        "unit": { "kind": "string" },
+        "rateHz": { "kind": "number", "positive": true }
+      }
+    },
+    "StatusLed": {
+      "kind": "object",
+      "properties": {
+        "r": { "kind": "number", "int": true, "nonnegative": true, "required": true },
+        "g": { "kind": "number", "int": true, "nonnegative": true, "required": true },
+        "b": { "kind": "number", "int": true, "nonnegative": true, "required": true }
+      }
+    },
+    "SystemCapabilitiesV2": {
+      "kind": "object",
+      "properties": {
+        "platform": { "kind": "enum", "values": ["rpi-cm5", "rpi-cm4"], "required": true },
+        "encoder": { "kind": "enum", "values": ["sw-h264", "hw-h264"] },
+        "rails": { "kind": "boolean" },
+        "statusLed": { "kind": "ref", "ref": "StatusLed" },
+        "fields": { "kind": "array", "items": { "kind": "string" } }
+      }
+    },
     "MediaCapabilities": {
       "kind": "object",
       "properties": {
@@ -48,10 +91,23 @@
         "audio": { "kind": "array", "items": { "kind": "ref", "ref": "AudioCapability" }, "default": [] }
       }
     },
+    "MediaCapabilitiesV2": {
+      "kind": "object",
+      "properties": {
+        "video": { "kind": "array", "items": { "kind": "ref", "ref": "VideoCapabilityV2" }, "default": [] },
+        "audio": { "kind": "array", "items": { "kind": "ref", "ref": "AudioCapability" }, "default": [] }
+      }
+    },
     "SensorsCapabilities": {
       "kind": "object",
       "properties": {
         "imu": { "kind": "ref", "ref": "ImuCapability" }
+      }
+    },
+    "SensorsCapabilitiesV2": {
+      "kind": "object",
+      "properties": {
+        "imu": { "kind": "ref", "ref": "ImuCapabilityV2" }
       }
     },
     "CommCapabilities": {
@@ -62,7 +118,7 @@
         "signal": { "kind": "ref", "ref": "FieldList" }
       }
     },
-    "IoCapabilities": {
+    "IoCapabilitiesV1": {
       "kind": "object",
       "properties": {
         "schemaVersion": { "kind": "literal", "value": 1, "required": true },
@@ -71,6 +127,21 @@
         "comm": { "kind": "ref", "ref": "CommCapabilities" },
         "system": { "kind": "ref", "ref": "FieldList" }
       }
+    },
+    "IoCapabilitiesV2": {
+      "kind": "object",
+      "properties": {
+        "schemaVersion": { "kind": "literal", "value": 2, "required": true },
+        "media": { "kind": "ref", "ref": "MediaCapabilitiesV2" },
+        "sensors": { "kind": "ref", "ref": "SensorsCapabilitiesV2" },
+        "comm": { "kind": "ref", "ref": "CommCapabilities" },
+        "system": { "kind": "ref", "ref": "SystemCapabilitiesV2", "required": true }
+      }
+    },
+    "IoCapabilities": {
+      "kind": "versioned",
+      "field": "schemaVersion",
+      "versions": { "1": "IoCapabilitiesV1", "2": "IoCapabilitiesV2" }
     }
   }
 }
