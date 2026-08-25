@@ -358,13 +358,60 @@ export interface FieldList {
   fields: string[];
 }
 
-export interface IoCapabilities {
+export interface IoCapabilitiesV1 {
   schemaVersion: 1;
   media?: { video?: VideoCapability[]; audio?: AudioCapability[] };
   sensors?: { imu?: ImuCapability };
   comm?: { module?: string; gps?: FieldList; signal?: FieldList };
   system?: FieldList;
 }
+
+// ---- schemaVersion 2 (cm4-support): platform facts the device agent turns
+// into mechanism. Pipeline strings and libcamera paths are deliberately NOT
+// part of this contract — the agent enumerates/renders those itself.
+
+/** Platforms the device agent has an enumeration strategy + encoder default for. */
+export type Platform = "rpi-cm5" | "rpi-cm4";
+
+/**
+ * Names one of the agent's TESTED pipeline templates. `hw-h264` =
+ * v4l2h264enc (CM4); `sw-h264` = x264enc (the CM5 has no HW H.264 encoder).
+ * Omitted, the agent derives it from `platform`.
+ */
+export type EncoderToken = "sw-h264" | "hw-h264";
+
+export interface VideoCapabilityV2 extends VideoCapability {
+  /** Carrier connector (`csi0`, `csi1`) — never a libcamera path. */
+  connector: string;
+  /** Sensor part on that connector (e.g. `imx290`). */
+  sensor: string;
+}
+
+export interface ImuCapabilityV2 extends ImuCapability {
+  /** IMU part number (e.g. `bno085`); declared = expected-if-present. */
+  model?: string;
+}
+
+export interface SystemCapabilitiesV2 {
+  platform: Platform;
+  encoder?: EncoderToken;
+  /** PMIC 5V-rail/PSU telemetry exists on this carrier. */
+  rails?: boolean;
+  /** RGB status LED GPIO pin map; null = no LED wired. */
+  statusLed?: { r: number; g: number; b: number } | null;
+  /** Telemetry field list, exactly as in v1's `system.fields`. */
+  fields?: string[];
+}
+
+export interface IoCapabilitiesV2 {
+  schemaVersion: 2;
+  media?: { video?: VideoCapabilityV2[]; audio?: AudioCapability[] };
+  sensors?: { imu?: ImuCapabilityV2 };
+  comm?: { module?: string; gps?: FieldList; signal?: FieldList };
+  system: SystemCapabilitiesV2;
+}
+
+export type IoCapabilities = IoCapabilitiesV1 | IoCapabilitiesV2;
 
 export interface IoCapabilitiesIssue {
   /** JSON-pointer-ish path, e.g. `media.video[0].codec`. */
@@ -388,6 +435,12 @@ export interface Device {
   agentVersion: string | null;
   /** Machine-managed. Writing it through `update()` is a 400. */
   status: DeviceStatus;
+  /**
+   * Probe-at-claim could not pick a device model unambiguously (cm4-support);
+   * the device carries its registration's fallback model until
+   * `update({ deviceModelId })` confirms one, which clears this.
+   */
+  needsModel: boolean;
   lastSeenAt: string | null;
   config: DeviceConfig;
   /** Bumped on every config write; carried on the retained MQTT message as `rev`. */
@@ -814,6 +867,13 @@ export interface CreateDeviceInput {
 
 export interface UpdateDeviceInput {
   name?: string | null;
+  /**
+   * Reassign the device model (cm4-support): resolves a `needsModel` device
+   * or corrects a wrong model. Clears `needsModel` and republishes the
+   * device's config with a bumped rev so the new model's hardware block
+   * reaches the device. Does NOT re-mint KVS channels.
+   */
+  deviceModelId?: string;
 }
 
 /** What `devices.getConfig()` returns: the config view of a device read. */
@@ -830,6 +890,12 @@ export interface DeviceConfigView {
 export interface CreateDeviceRegistrationInput {
   /** Sent as `X-Workspace-Id`, REQUIRED here. Falls back to the client default. */
   workspaceId?: string;
+  /**
+   * Pin the device model explicitly (cm4-support D3 override): the claim then
+   * honors this pick and skips probe-at-claim mapping. Passing it while a
+   * pending code exists re-pins that code's model in place. Unknown ids 400.
+   */
+  deviceModelId?: string;
 }
 
 export interface WaitForClaimOptions {

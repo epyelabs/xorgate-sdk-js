@@ -216,6 +216,22 @@ function checkerFor(name, def) {
   lines.push(`    push(path || "(root)", "Expected an object");`);
   lines.push(`    return;`);
   lines.push(`  }`);
+  // Version dispatch (io_capabilities schemaVersion 1 | 2): route to the
+  // per-version definition on the discriminator, mirroring the upstream
+  // z.discriminatedUnion. An unknown version is one issue at the field.
+  if (def.kind === "versioned") {
+    const p = `p_${def.field}`;
+    lines.push(`  const ${p} = ${PATH("path", def.field)};`);
+    for (const [literal, ref] of Object.entries(def.versions)) {
+      lines.push(
+        `  if (value[${JSON.stringify(def.field)}] === ${literal}) return check${ref}(value, path, push);`,
+      );
+    }
+    const expected = Object.keys(def.versions).join(" or ");
+    lines.push(`  push(${p}, "Expected schemaVersion ${expected}");`);
+    lines.push(`}`);
+    return lines;
+  }
   for (const [key, prop] of Object.entries(def.properties)) {
     const p = `p_${key}`;
     lines.push(`  const ${p} = ${PATH("path", key)};`);
@@ -239,6 +255,16 @@ function propertyChecks(prop, expr, pathVar, indent) {
     case "string":
       lines.push(`${indent}if (typeof ${expr} !== "string") push(${pathVar}, "Expected a string");`);
       break;
+    case "boolean":
+      lines.push(`${indent}if (typeof ${expr} !== "boolean") push(${pathVar}, "Expected a boolean");`);
+      break;
+    case "enum": {
+      const list = prop.values.map((v) => JSON.stringify(v)).join(", ");
+      lines.push(
+        `${indent}if (![${list}].includes(${expr} as string)) push(${pathVar}, ${JSON.stringify(`Expected one of: ${prop.values.join(", ")}`)});`,
+      );
+      break;
+    }
     case "number": {
       const conds = [`typeof ${expr} !== "number"`, `!Number.isFinite(${expr})`];
       lines.push(`${indent}if (${conds.join(" || ")}) push(${pathVar}, "Expected a number");`);
@@ -250,6 +276,11 @@ function propertyChecks(prop, expr, pathVar, indent) {
       if (prop.positive) {
         lines.push(
           `${indent}else if ((${expr} as number) <= 0) push(${pathVar}, "Expected a positive number");`,
+        );
+      }
+      if (prop.nonnegative) {
+        lines.push(
+          `${indent}else if ((${expr} as number) < 0) push(${pathVar}, "Expected a non-negative number");`,
         );
       }
       break;

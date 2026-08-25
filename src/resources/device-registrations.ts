@@ -34,7 +34,10 @@ export class DeviceRegistrationsResource {
     return await this.http.request<DeviceRegistration>(
       "POST",
       "/device-registrations",
-      { workspaceId },
+      {
+        workspaceId,
+        ...(input.deviceModelId ? { body: { deviceModelId: input.deviceModelId } } : {}),
+      },
       this.tenancy,
     );
   }
