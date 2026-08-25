@@ -242,6 +242,36 @@ export interface CellularConfig {
 }
 
 /**
+ * Camera mounting rotation (`cameraMount` namespace): per-camera 0/180 applied
+ * at the image sensor via the camera overlay in /boot/firmware/config.txt, so
+ * live video, recordings, replays and workflow frames are all corrected at zero
+ * CPU cost. ⚠️ Applies on the NEXT BOOT: the agent edits the boot config and
+ * reports the namespace with a `rebootRequired` detail; it never reboots the
+ * device itself. An absent camera key is unmanaged (the boot config is left as
+ * found); an explicit `rotationDeg: 0` forces that camera upright.
+ */
+export interface CameraMountConfig {
+  /**
+   * Per-camera mounting rotation keyed by stream key, e.g. {"cam0":
+   * {"rotationDeg": 180}}. An ABSENT key is UNMANAGED: the device leaves that
+   * camera's boot config exactly as it found it. Send an explicit
+   * {"rotationDeg": 0} to take a camera over and force it upright. Takes effect
+   * on the next boot — the device reports `rebootRequired` and never reboots
+   * itself.
+   */
+  cameras: Record<string, {
+    /**
+     * Rotation applied at the sensor, degrees. 180 = the camera is mounted
+     * upside down, so the sensor flips H+V and every consumer (live WebRTC,
+     * recorded MP4s, replays, workflow frames) sees an upright image with no
+     * added CPU. Only 0 and 180 exist — the camera overlay parameter has no
+     * 90/270.
+     */
+    rotationDeg: 0 | 180;
+  }>;
+}
+
+/**
  * One key per config namespace, all optional. A namespace is either configured
  * or absent: the API strips cleared namespaces, so nothing is ever
  * present-but-null on read. Writing `null` is what clears one.
@@ -290,6 +320,17 @@ export interface DeviceConfig {
    * settings.json by the modem daemon — never restart it to apply a setting.
    */
   cellular?: CellularConfig;
+  /**
+   * Camera mounting rotation (`cameraMount` namespace): per-camera 0/180
+   * applied at the image sensor via the camera overlay in
+   * /boot/firmware/config.txt, so live video, recordings, replays and workflow
+   * frames are all corrected at zero CPU cost. ⚠️ Applies on the NEXT BOOT: the
+   * agent edits the boot config and reports the namespace with a
+   * `rebootRequired` detail; it never reboots the device itself. An absent
+   * camera key is unmanaged (the boot config is left as found); an explicit
+   * `rotationDeg: 0` forces that camera upright.
+   */
+  cameraMount?: CameraMountConfig;
 }
 
 /** Every namespace replaced WHOLE. `null` reverts it to the device defaults. */
@@ -298,7 +339,7 @@ export type DeviceConfigPatch = {
 };
 
 /** The namespace keys, in contract order. */
-export const CONFIG_NAMESPACES = ["gnssAntBias", "imuMount", "recording", "lteRecovery", "timeSync", "cellular"] as const;
+export const CONFIG_NAMESPACES = ["gnssAntBias", "imuMount", "recording", "lteRecovery", "timeSync", "cellular", "cameraMount"] as const;
 
 /** Cloud-only presentation preferences. Never delivered to the device. */
 export interface DeviceUiPrefs {
