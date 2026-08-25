@@ -27,6 +27,7 @@ export type {
   RecordingConfig,
   LteRecoveryConfig,
   TimeSyncConfig,
+  CameraMountConfig,
   CellularConfig,
 } from "./generated/config.js";
 export { CONFIG_NAMESPACES } from "./generated/config.js";

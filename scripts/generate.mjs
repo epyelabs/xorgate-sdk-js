@@ -38,6 +38,7 @@ const NAMESPACE_TYPES = {
   lteRecovery: "LteRecoveryConfig",
   timeSync: "TimeSyncConfig",
   cellular: "CellularConfig",
+  cameraMount: "CameraMountConfig",
 };
 
 function wrapComment(text, indent) {
@@ -61,6 +62,14 @@ function wrapComment(text, indent) {
 
 function tsType(schema, indent) {
   if (schema.enum) return schema.enum.map((v) => JSON.stringify(v)).join(" | ");
+  // A union of literals, which is how zod renders a closed set of NUMBERS
+  // (`cameraMount`'s 0 | 180) — string sets come through as a plain `enum`.
+  // Without this the member would silently generate as `unknown`, i.e. the
+  // contract's tightest constraint would become the SDK's loosest type.
+  if (Array.isArray(schema.anyOf)) {
+    return schema.anyOf.map((s) => tsType(s, indent)).join(" | ");
+  }
+  if (schema.const !== undefined) return JSON.stringify(schema.const);
   switch (schema.type) {
     case "boolean":
       return "boolean";

@@ -3,6 +3,34 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.4.0
+
+Mirrors the platform's camera sensor-level rotation release: a device mounted
+upside down can be told so, and every consumer — live video, recordings,
+replays, workflow frames — sees an upright image. Additive; it degrades
+gracefully against an older API deployment, which simply never returns the
+namespace.
+
+### Added
+
+- **`cameraMount` config namespace** (`CameraMountConfig`), on `DeviceConfig`
+  and `DeviceConfigPatch`: `{ cameras: { cam0: { rotationDeg: 0 | 180 } } }`,
+  keyed by stream key. The device applies it at the image SENSOR, by way of the
+  camera overlay in its boot config, so nothing downstream has to know rotation
+  exists and it costs no CPU. Two consequences worth knowing when you write a
+  client against it:
+  - it takes effect on the device's **next boot**. Until then the device
+    reports the namespace as `adjusted` with a "REBOOT REQUIRED" detail, and
+    `reportedConfig.effective.cameraMount` carries what is actually in force
+    (`cameras`) alongside what is waiting (`pending`, `rebootRequired`);
+  - an **absent** camera key is unmanaged — the device leaves that camera's
+    boot config exactly as it found it. Send an explicit `{rotationDeg: 0}` to
+    take a camera over and force it upright.
+- **Closed numeric sets in the generated config types.** The generator now
+  reads a JSON-Schema `anyOf` of literals (and a bare `const`), so
+  `rotationDeg` types as `0 | 180` rather than `unknown`. String sets already
+  came through as unions; this closes the number case.
+
 ## 0.3.0
 
 Mirrors the platform's cm4-support release: device models became the single
