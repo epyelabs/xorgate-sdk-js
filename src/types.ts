@@ -435,6 +435,12 @@ export interface Device {
   agentVersion: string | null;
   /** Machine-managed. Writing it through `update()` is a 400. */
   status: DeviceStatus;
+  /**
+   * Probe-at-claim could not pick a device model unambiguously (cm4-support);
+   * the device carries its registration's fallback model until
+   * `update({ deviceModelId })` confirms one, which clears this.
+   */
+  needsModel: boolean;
   lastSeenAt: string | null;
   config: DeviceConfig;
   /** Bumped on every config write; carried on the retained MQTT message as `rev`. */
@@ -861,6 +867,13 @@ export interface CreateDeviceInput {
 
 export interface UpdateDeviceInput {
   name?: string | null;
+  /**
+   * Reassign the device model (cm4-support): resolves a `needsModel` device
+   * or corrects a wrong model. Clears `needsModel` and republishes the
+   * device's config with a bumped rev so the new model's hardware block
+   * reaches the device. Does NOT re-mint KVS channels.
+   */
+  deviceModelId?: string;
 }
 
 /** What `devices.getConfig()` returns: the config view of a device read. */
@@ -877,6 +890,12 @@ export interface DeviceConfigView {
 export interface CreateDeviceRegistrationInput {
   /** Sent as `X-Workspace-Id`, REQUIRED here. Falls back to the client default. */
   workspaceId?: string;
+  /**
+   * Pin the device model explicitly (cm4-support D3 override): the claim then
+   * honors this pick and skips probe-at-claim mapping. Passing it while a
+   * pending code exists re-pins that code's model in place. Unknown ids 400.
+   */
+  deviceModelId?: string;
 }
 
 export interface WaitForClaimOptions {

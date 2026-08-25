@@ -162,6 +162,9 @@ export function normalizeDevice(value: unknown): Device {
     name: (row["name"] as string | null) ?? null,
     agentVersion: (row["agentVersion"] as string | null) ?? null,
     status: row["status"] as Device["status"],
+    // Absent on a pre-cm4-support backend; false is the right read there
+    // (probe-at-claim did not exist, so no device is awaiting a model).
+    needsModel: row["needsModel"] === true,
     lastSeenAt: (row["lastSeenAt"] as string | null) ?? null,
     config: (row["config"] as DeviceConfig | null) ?? {},
     configRev: typeof row["configRev"] === "number" ? row["configRev"] : 0,
