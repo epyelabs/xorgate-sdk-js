@@ -3,6 +3,38 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.3.0
+
+Mirrors the platform's cm4-support release: device models became the single
+hardware variation point (`io_capabilities` schemaVersion 2), and devices can
+now be registered with — or reassigned to — a specific model. Everything is
+additive and degrades gracefully against older API deployments.
+
+### Added
+
+- **`ioCapabilities` schemaVersion 2.** `validateIoCapabilities` /
+  `parseIoCapabilities` accept both versions, dispatching on the
+  discriminator exactly like the platform's provisioning parser. v2 adds the
+  platform facts the device agent turns into mechanism:
+  `system.platform` (`"rpi-cm5" | "rpi-cm4"`), `system.encoder`
+  (`"sw-h264" | "hw-h264"`), `system.rails`, a nullable `system.statusLed`
+  pin map, `sensors.imu.model`, and required `connector` + `sensor` on each
+  `media.video[]` entry. `IoCapabilities` in the types is now the
+  `IoCapabilitiesV1 | IoCapabilitiesV2` union — V1 is unchanged, so existing
+  v1 documents and consumers keep typechecking. `videoStreamKeys()` and
+  `declaredMetrics()` read both versions.
+- **`Device.needsModel`**: probe-at-claim could not pick a model
+  unambiguously; the device carries its registration's fallback model until
+  one is confirmed. Reads `false` against an older backend (the field is
+  simply absent there).
+- **`devices.update({ deviceModelId })`**: reassign the device model. The
+  platform clears `needsModel` and republishes the device's config with the
+  new model's hardware block, so a fielded device re-renders its pipelines
+  with no re-provision. KVS channels are not re-minted.
+- **`deviceRegistrations.create({ deviceModelId })`**: pin the model at
+  registration; the claim then honors the pick and skips probe-at-claim.
+  Calling it again while a code is pending re-pins that code in place.
+
 ## 0.2.0
 
 Mirrors the platform's API-productization release (pagination consistency,
