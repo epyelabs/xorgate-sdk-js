@@ -3,6 +3,19 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.5.0
+
+Session poster frames. Additive; against an older API deployment the field is
+simply absent, which the type already models.
+
+### Added
+
+- **`MediaSession.thumbnailUrl`** — presigned GET for a poster frame JPEG the
+  platform extracts from the session's first segment. Present on the list
+  endpoints only (like the rollups), short-lived like segment playback URLs,
+  and `null`/absent when the session has no thumbnail, so consumers must keep
+  a fallback rendering.
+
 ## 0.4.0
 
 Mirrors the platform's camera sensor-level rotation release: a device mounted
