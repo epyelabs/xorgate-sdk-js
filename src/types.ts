@@ -596,6 +596,13 @@ export interface MediaSession {
   segmentCount?: number;
   totalBytes?: number;
   totalDurationMs?: number;
+  /**
+   * Presigned GET for the session's poster frame JPEG (extracted server-side
+   * from the first segment). List endpoints only, same TTL as segment playback
+   * URLs, and null when no thumbnail exists (pre-feature session, first
+   * segment never uploaded, or extraction failed) — always render a fallback.
+   */
+  thumbnailUrl?: string | null;
 }
 
 /** One drive: the sessions whose intervals are within 60 s of each other. */
