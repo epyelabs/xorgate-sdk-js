@@ -6,8 +6,8 @@
       "file": "config-contract.json",
       "relation": "verbatim copy",
       "sourceFile": "src/config-registry/config-contract.json",
-      "sourceSha256": "0b73cc21544dc78955965f6efb2cfb9c4ee7af4bba3f1f7e7038b99bdf54e5e7",
-      "vendoredAt": "2026-08-25"
+      "sourceSha256": "9003d2ec66c610a60dcdfbe06a9f0b7425ce24e3ff69140564286bc717e1dd55",
+      "vendoredAt": "2026-08-31"
     },
     {
       "file": "io-capabilities.schema.json",

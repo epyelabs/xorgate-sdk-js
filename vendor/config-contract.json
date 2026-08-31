@@ -65,11 +65,11 @@
       "defaults": {
         "telemetry": {
           "enabled": false,
-          "rateHz": 10
+          "rateHz": 1
         },
         "video": {
           "enabled": false,
-          "preset": "1080p15-2mbps",
+          "preset": "720p15-1mbps",
           "segmentSeconds": 60,
           "bootDefer": "auto",
           "bootDeferMaxSecs": 90,
@@ -117,7 +117,7 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 20,
-                "description": "Target sample rate. Each sensor group is additionally capped by its native cadence (IMU 20 Hz, GPS 1 Hz, system 1 Hz). Default 10."
+                "description": "Target sample rate. Each sensor group is additionally capped by its native cadence (IMU 20 Hz, GPS 1 Hz, system 1 Hz). Default 1."
               }
             },
             "additionalProperties": false
@@ -138,7 +138,7 @@
                   "720p15-2mbps",
                   "720p15-1mbps"
                 ],
-                "description": "Closed quality preset table (bounded CPU cost). Default 1080p15-2mbps."
+                "description": "Closed quality preset table (bounded CPU cost). Default 720p15-1mbps."
               },
               "segmentSeconds": {
                 "type": "integer",

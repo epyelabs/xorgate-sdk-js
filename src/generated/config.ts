@@ -35,14 +35,14 @@ export interface RecordingConfig {
     enabled?: boolean;
     /**
      * Target sample rate. Each sensor group is additionally capped by its
-     * native cadence (IMU 20 Hz, GPS 1 Hz, system 1 Hz). Default 10.
+     * native cadence (IMU 20 Hz, GPS 1 Hz, system 1 Hz). Default 1.
      */
     rateHz?: number;
   };
   video?: {
     /** Record camera video locally (default false). */
     enabled?: boolean;
-    /** Closed quality preset table (bounded CPU cost). Default 1080p15-2mbps. */
+    /** Closed quality preset table (bounded CPU cost). Default 720p15-1mbps. */
     preset?: "1080p30-4mbps" | "1080p15-2mbps" | "720p30-2mbps" | "720p15-2mbps" | "720p15-1mbps";
     /** Segment length — the unit of upload, retry and eviction. Default 60. */
     segmentSeconds?: number;
