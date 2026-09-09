@@ -3,6 +3,51 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.6.0
+
+Workflow templates become discoverable. Additive; against an older API
+deployment `tags` comes back as an empty array rather than undefined, and the
+three routes answer `404`.
+
+### Added
+
+- **`xg.workflowTemplates`**, the first piece of the platform's workflow
+  surface in this package. `list()` (paginated, with `iterate()` and
+  `listAll()`), `get()` and `tags()`. READS ONLY: authoring a template,
+  publishing a version, attaching one to a device and reading its runs are
+  still moving, are undocumented, and stay out.
+
+  The reason it exists is discovery by tag. An integration tags the templates
+  it owns in the web editor, then finds them without hard-coding an id someone
+  can delete:
+
+  ```ts
+  const page = await xg.workflowTemplates.list({ tags: ["geofence"] })
+  ```
+
+  `tags` is **ANY-of**: `["geofence", "speeding"]` returns templates carrying
+  either. There is no ALL-of mode. Values are normalized platform-side
+  (lowercase, deduplicated, at most 20 of at most 32 characters each,
+  `^[a-z0-9][a-z0-9._-]*$`), so `"Geofence"` matches the template stored as
+  `geofence`, and a value that could never be a tag is a `400` rather than a
+  silently empty result.
+
+- **`tags()`** returns the organization's distinct tags with counts, most used
+  first. One request instead of walking every template to learn what is
+  taggable.
+
+- **The types behind them**: `WorkflowTemplate`, `WorkflowTemplateDetail`,
+  `WorkflowTemplateVersion`, `WorkflowTemplateDeployment`,
+  `WorkflowTemplateAuthor`, `WorkflowTemplateStatus`, `WorkflowTemplateTagCount`,
+  `WorkflowDefinition` and `ListWorkflowTemplatesParams`. `WorkflowDefinition`
+  is deliberately loose (`{ schemaVersion?, nodes, edges }`): this package does
+  not model the node catalog, and a definition read through it is meant to be
+  handed to `@xorgate/workflow-engine` or written back verbatim.
+
+`tags` and `requiredCapabilities` are normalized to `[]` when a response omits
+them, so a consumer mapping over `template.tags` need not know which API
+deployment it is talking to.
+
 ## 0.5.0
 
 Session poster frames. Additive; against an older API deployment the field is

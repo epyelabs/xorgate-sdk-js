@@ -192,6 +192,19 @@ export interface ListApiKeysParams extends ListParams {
   signal?: AbortSignal;
 }
 
+export interface ListWorkflowTemplatesParams extends ListParams {
+  sort?: "updatedAt" | "createdAt" | "name";
+  status?: WorkflowTemplateStatus;
+  /**
+   * Return templates carrying at least ONE of these tags (ANY-of, never
+   * ALL-of). Values are normalized platform-side the way stored tags are, so
+   * `["Geofence"]` matches the template stored as `geofence`; a value that
+   * could never be a tag is a `400` rather than an empty result.
+   */
+  tags?: readonly string[];
+  signal?: AbortSignal;
+}
+
 export interface IterateOptions {
   /**
    * Called once per underlying HTTP page, before its items are yielded. The
@@ -960,4 +973,111 @@ export interface TelemetryReadingsParams extends ListParams {
   /** Under the table shape this also fixes the column set. */
   metric?: MetricName[];
   signal?: AbortSignal;
+}
+
+// ---------------------------------------------------------------------------
+// Workflow templates
+// ---------------------------------------------------------------------------
+
+/**
+ * The read half of the platform's workflow surface. Authoring a template,
+ * publishing it, attaching it to a device and reading its runs are not in this
+ * package and are not in the API reference; see the resource for why.
+ */
+
+export type WorkflowTemplateStatus = "draft" | "published";
+
+/**
+ * The person a row is attributed to. When the account behind it was deleted,
+ * the platform degrades the fields rather than nulling them:
+ * `{ id: "", name: "Unknown user", email: "" }`.
+ */
+export interface WorkflowTemplateAuthor {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  /** Derived from the name at creation, unique per organization, and stable across a rename. */
+  slug: string;
+  description: string | null;
+  /**
+   * Normalized platform-side: lowercase, deduplicated, 1 to 32 characters
+   * matching `^[a-z0-9][a-z0-9._-]*$`, at most 20. Always an array; an
+   * untagged template carries an empty one, and so does every template read
+   * from an API deployment older than the feature.
+   */
+  tags: string[];
+  status: WorkflowTemplateStatus;
+  /** The highest version number, published or not. */
+  currentVersion: number;
+  /** null until the template has been published once. */
+  publishedVersion: number | null;
+  /** How many devices the template is attached to. */
+  usedBy: number;
+  /**
+   * Abstract input needs of the graph that would run: tokens such as `video`,
+   * `gps`, `metric:<key>`. A device lacking one is refused on attach.
+   */
+  requiredCapabilities: string[];
+  createdBy: WorkflowTemplateAuthor;
+  updatedBy: WorkflowTemplateAuthor;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * The graph, `{ schemaVersion, nodes, edges }`, in the format documented at
+ * https://docs.xorgate.io/docs/workflows/definitions and shared with
+ * `@xorgate/workflow-engine`. Deliberately loose here: this package does not
+ * model the node catalog, and a definition read through it is meant to be
+ * handed to the engine or written back verbatim, not inspected field by field.
+ */
+export interface WorkflowDefinition {
+  schemaVersion?: number;
+  nodes: unknown[];
+  edges: unknown[];
+  [key: string]: unknown;
+}
+
+export interface WorkflowTemplateVersion {
+  id: string;
+  version: number;
+  status: "draft" | "published" | "archived";
+  message: string | null;
+  /** Served upgraded to the current schema version, whatever the stored row holds. */
+  definition: WorkflowDefinition;
+  /** The schema version of the STORED row, before that read-path upgrade. */
+  storedSchemaVersion: number;
+  createdBy: WorkflowTemplateAuthor;
+  createdAt: string;
+}
+
+/** One device a template is attached to. */
+export interface WorkflowTemplateDeployment {
+  /** The attachment id, not the device id. */
+  id: string;
+  /** The device's name, falling back to its serial. */
+  name: string;
+  workspaceName: string;
+  /** The device's serial. */
+  target: string;
+  pinnedVersion: number | null;
+  enabled: boolean;
+  lastRunAt: string | null;
+}
+
+export interface WorkflowTemplateDetail extends WorkflowTemplate {
+  /** Every version, oldest first. */
+  versions: WorkflowTemplateVersion[];
+  usage: WorkflowTemplateDeployment[];
+}
+
+export interface WorkflowTemplateTagCount {
+  tag: string;
+  /** Templates in this organization carrying the tag. */
+  count: number;
 }

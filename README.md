@@ -42,7 +42,8 @@ silently drop the version.
 ## What you get
 
 - **One client, resource modules.** `xg.devices`, `xg.workspaces`,
-  `xg.telemetry`, `xg.media`, `xg.apiKeys`, and so on, mirroring the API.
+  `xg.telemetry`, `xg.media`, `xg.apiKeys`, `xg.workflowTemplates`, and so on,
+  mirroring the API.
 - **Tenancy is configuration, not per-call boilerplate.** `organizationId` is
   required at construction and travels on every request.
 - **One error type.** Everything thrown is a `XorgateError` carrying
@@ -77,6 +78,27 @@ is exactly where it was last seen.
 **`telemetry.history()` does not paginate, and `truncated` is the only signal.**
 A truncated result is a complete-looking array. Check it on every call.
 
+## Finding templates by tag
+
+A workflow template carries free-form tags, and they are how an integration
+finds the templates it owns without hard-coding an id someone can delete:
+
+```ts
+const page = await xg.workflowTemplates.list({ tags: ["geofence"] })
+for (const template of page.items) {
+  console.log(template.name, template.status, template.tags)
+}
+
+// Every distinct tag in the organization, with counts.
+const vocabulary = await xg.workflowTemplates.tags()
+```
+
+`tags` is ANY-of: `["geofence", "speeding"]` returns templates carrying either.
+Tags are normalized platform-side (lowercase, deduplicated, at most 20 of at
+most 32 characters each, `^[a-z0-9][a-z0-9._-]*$`), so `"Geofence"` matches
+`geofence` and a value that could never be a tag is a `400` rather than an empty
+result. Tags are SET in the web editor; this package reads them.
+
 ## Errors
 
 ```ts
@@ -108,8 +130,13 @@ resource back beats retrying it.
 Live telemetry (MQTT over WebSocket) and live video (WebRTC) are a separate
 plane that a client speaks directly. Your backend vends credentials for it with
 `POST /auth/live-credentials`, and the browser side is
-[`@xorgate/react`](https://github.com/epyelabs/xorgate-react). Workflows and AI
-are not covered; `xg.request()` reaches them with no stability promise.
+[`@xorgate/react`](https://github.com/epyelabs/xorgate-react).
+
+Of the workflows and AI surface, only the template READS are covered:
+`xg.workflowTemplates.list()`, `.get()` and `.tags()`. Authoring a template,
+publishing a version, attaching one to a device and reading its runs are still
+moving and are undocumented; `xg.request()` reaches them with no stability
+promise.
 
 See [What this SDK does not cover](https://docs.xorgate.io/docs/backend-sdk/not-covered).
 

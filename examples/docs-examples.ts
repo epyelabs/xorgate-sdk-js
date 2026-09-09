@@ -38,6 +38,7 @@ declare const logger: { error(ctx: unknown, msg: string): void };
 declare const pastedJson: string;
 declare const deviceId: string;
 declare const sessionId: string;
+declare const templateId: string;
 declare const orgId: string;
 declare const otherId: string;
 declare const yardId: string;
@@ -998,5 +999,34 @@ export async function walkthroughErrors() {
       default:
         throw e;
     }
+  }
+}
+
+// --- Workflow templates ------------------------------------------------------
+
+export async function listTemplatesByTag() {
+  const page = await xg.workflowTemplates.list({ tags: ["geofence"] });
+  for (const template of page.items) {
+    console.log(template.name, template.status, template.tags.join(" "));
+  }
+}
+
+export async function readTheTagVocabulary() {
+  for (const { tag, count } of await xg.workflowTemplates.tags()) {
+    console.log(`${tag} (${count})`);
+  }
+}
+
+export async function readOneTemplateGraph() {
+  const template = await xg.workflowTemplates.get(templateId);
+  const running =
+    template.versions.find((v) => v.version === (template.publishedVersion ?? template.currentVersion)) ??
+    template.versions.at(-1);
+  console.log(template.name, running?.definition.nodes.length, "nodes");
+}
+
+export async function everyTaggedTemplate() {
+  for await (const template of xg.workflowTemplates.iterate({ tags: ["geofence", "speeding"] })) {
+    console.log(template.slug);
   }
 }
