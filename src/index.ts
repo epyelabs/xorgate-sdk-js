@@ -43,6 +43,7 @@ export type { DevicesResource } from "./resources/devices.js";
 export type { DeviceRegistrationsResource } from "./resources/device-registrations.js";
 export type { MediaResource } from "./resources/media.js";
 export type { TelemetryResource } from "./resources/telemetry.js";
+export type { WorkflowTemplatesResource } from "./resources/workflow-templates.js";
 
 export { CONFIG_NAMESPACES } from "./generated/config.js";
 
