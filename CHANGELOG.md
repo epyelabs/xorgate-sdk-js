@@ -3,6 +3,19 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.6.1
+
+Search knows about the Models section. Additive; an older API deployment
+simply never returns the two new types.
+
+### Changed
+
+- **`SearchResult["type"]`** gains `"dataset"` (a labeling dataset) and
+  `"model"` (a trained network in the organization's registry, listed by its
+  label with `family/name@version` as the subtitle). Code that switches
+  exhaustively over the union needs the two new cases; everything else is
+  unaffected.
+
 ## 0.6.0
 
 Workflow templates become discoverable. Additive; against an older API

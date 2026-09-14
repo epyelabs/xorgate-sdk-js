@@ -576,7 +576,12 @@ export interface DeviceRegistration {
 }
 
 export interface SearchResult {
-  type: "device" | "workflow-template" | "workflow-instance";
+  /**
+   * `dataset` and `model` (a trained network in the organization's registry,
+   * not a hardware device model) arrive with the Models section of the
+   * platform (2026-09-13); an older API deployment never returns them.
+   */
+  type: "device" | "workflow-template" | "workflow-instance" | "dataset" | "model";
   id: string;
   title: string;
   subtitle: string | null;
