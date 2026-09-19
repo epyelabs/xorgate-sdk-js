@@ -3,6 +3,82 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.7.0
+
+Device transfer: moving a device to another workspace, and handing one to
+another organization. Purely additive — nothing that worked before behaves
+differently.
+
+The operation this models was performed by hand four times in production on
+2026-09-18 and the first attempt caused a ~50-minute outage, so the doc comments
+on these methods carry more warning than usual. They are worth reading before
+calling them.
+
+### Added
+
+- **`devices.transfer(id, { workspaceId, organizationId? })`** — move a device.
+  `organizationId` opens the both-membership fast path: the caller must hold
+  `owner` or `admin` in the destination organization *as a user*, so an API key
+  is refused with 403 and should mint an offer instead.
+
+  Two things the return value says that a bare 200 does not.
+  `transfer.scopeAttributes === "failed"` is a **degraded success** — the device
+  moved and was told its new telemetry topic, but the broker was not told to
+  allow it, so it falls back to the still-ingested legacy plane and any
+  workspace-scoped vended credential sees nothing until a settings save
+  re-asserts the attributes. And `transfer.adoption` has **three** values:
+  `"confirmed"`, `"pending"` and `"unknown"`, the last meaning the device has
+  never reported a telemetry scope at all (its agent predates `v0.0.6`). Do not
+  collapse it into either of the others, and note that `"pending"` immediately
+  after a transfer is normal rather than a failure.
+
+  **A transfer does not touch the device**, so it does not have to be online:
+  certificates and identity never change and the tenancy is never persisted on
+  the box. Never gate a transfer on `device.status`.
+
+- **`devices.previewTransfer(id, { workspaceId, organizationId? })`** — the dry
+  run behind a confirmation dialog. Blockers (`SAME_WORKSPACE`,
+  `SERIAL_COLLISION`, `TRANSFER_IN_PROGRESS`) are **returned rather than
+  thrown**, so the dialog can explain a refusal without provoking it.
+  `carriesHistory` is always literally `true` and is meant to be rendered: all
+  historical telemetry and all recorded footage travel with the device, which
+  across organizations is a data-disclosure event.
+
+- **`devices.transferMany(ids, input)`** — a **client-side loop**, not a batch
+  endpoint. The platform has no bulk transfer route. It runs sequentially on
+  purpose (each transfer writes AWS IoT thing attributes), does not stop at the
+  first failure, and reports per device.
+
+- **`xg.transferOffers`** — the cross-organization handshake:
+  `create(deviceId)`, `list({ status })`, `listForDevice(deviceId)`,
+  `get(code)`, `accept(code, { workspaceId })`, `decline(code)`,
+  `cancel(code)`.
+
+  Two shapes worth knowing. `get(code)` returns a **`TransferOfferPreview`,
+  which is a different and much smaller type than `TransferOffer`** — an
+  allowlist with no device id, no serial and no tenancy ids, because the code is
+  a bearer token held by an organization not yet entitled to the device.
+  And `create()` reports `reused`, because the API answers 201 for a fresh code
+  and 200 when it hands back the device's already-open one, with byte-identical
+  bodies; `reused` is the only way to tell them apart.
+
+  **There is no inbox of incoming offers, by design.** An offer names no
+  destination — not knowing the destination's organization id is the entire
+  point of the code — so a pending offer is discoverable only by its code.
+  `list()` shows what your organization sent plus what it has accepted. Build a
+  "paste a code" entry point, not a notification list.
+
+- **`RawRequestInit.onStatus`** — observe the HTTP status of a successful
+  response through `client.request()`. Added for the 201-vs-200 case above and
+  useful for the escape hatch generally.
+
+- **Error codes.** `SAME_WORKSPACE` (400), `SERIAL_COLLISION`,
+  `TRANSFER_IN_PROGRESS`, `CONCURRENT_MODIFICATION` (409) and `TRANSFER_FAILED`
+  (502) join `XorgateApiErrorCode`. `TRANSFER_FAILED` means the sequence was
+  **rolled back and nothing changed**, so it is safe to retry.
+  `DEVICE_OUT_OF_SCOPE` joins `XorgateClientErrorCode`; it is raised by
+  `@xorgate/react` and declared here so both packages name it identically.
+
 ## 0.6.1
 
 Search knows about the Models section. Additive; an older API deployment

@@ -1030,3 +1030,157 @@ export async function everyTaggedTemplate() {
     console.log(template.slug);
   }
 }
+
+// --- Device transfer ---------------------------------------------------------
+
+export async function previewThenTransfer() {
+  const preview = await xg.devices.previewTransfer(deviceId, {
+    workspaceId: otherWorkspaceId,
+  });
+
+  // Blockers are RETURNED, not thrown: show the reason without provoking it.
+  if (preview.blockers.length > 0) {
+    for (const blocker of preview.blockers) console.log(blocker.code, blocker.message);
+    return;
+  }
+
+  // Always true, and the question a customer will actually ask. Render it.
+  console.log(
+    `Moving ${preview.deviceName ?? preview.deviceId} from ` +
+      `${preview.from.workspaceName} to ${preview.to.workspaceName}. ` +
+      (preview.carriesHistory
+        ? "All telemetry history and recorded footage move with it."
+        : ""),
+  );
+  for (const attachment of preview.workflowAttachments) {
+    console.log("will be detached:", attachment.templateName);
+  }
+
+  const { device, transfer } = await xg.devices.transfer(deviceId, {
+    workspaceId: otherWorkspaceId,
+  });
+  console.log(device.workspaceId, transfer.id);
+}
+
+export async function readTheTransferSummary() {
+  const { transfer } = await xg.devices.transfer(deviceId, {
+    workspaceId: otherWorkspaceId,
+  });
+
+  // A 200 is not uniformly clean. `failed` means the device moved and was told
+  // its new topic, but the BROKER was not told to allow it: it falls back to the
+  // still-ingested legacy telemetry plane, and a workspace-scoped vended
+  // credential sees nothing until any settings save re-asserts the attributes.
+  if (transfer.scopeAttributes === "failed") {
+    console.warn("degraded: re-save any setting on this device to repair it");
+  }
+
+  // Three values, never two. `pending` right after a transfer is NORMAL — the
+  // ownership change is already complete and authoritative in the cloud.
+  // `unknown` means the device has never reported a telemetry scope at all,
+  // which is an agent older than v0.0.6, not a failure to converge.
+  switch (transfer.adoption) {
+    case "confirmed":
+      break;
+    case "pending":
+      break;
+    case "unknown":
+      break;
+  }
+
+  for (const warning of transfer.warnings) console.log(warning);
+}
+
+/** An offline device is a NORMAL success. Never gate a transfer on status. */
+export async function transferAnOfflineDevice() {
+  const device = await xg.devices.get(deviceId);
+  console.log(device.status); // may well be "offline"; transfer anyway
+  await xg.devices.transfer(deviceId, { workspaceId: otherWorkspaceId });
+}
+
+/** Same-organization bulk move. A client-side loop; there is no batch route. */
+export async function bulkTransfer() {
+  const results = await xg.devices.transferMany([deviceId, otherId], {
+    workspaceId: otherWorkspaceId,
+  });
+  for (const item of results) {
+    if (item.ok) console.log(item.deviceId, "moved");
+    else console.log(item.deviceId, "failed:", item.error?.code);
+  }
+}
+
+/** The SOURCE side of a handover to an organization you are not a member of. */
+export async function offerADevice() {
+  const { offer, willDetachWorkflowAttachments, reused } =
+    await xg.transferOffers.create(deviceId);
+
+  // 201 minted a code; 200 handed back the device's already-open one. The
+  // bodies are identical, so `reused` is the only way to tell.
+  console.log(reused ? "existing code" : "new code", offer.code, offer.expiresAt);
+
+  // The source is not present at the accept: this is its last chance to see
+  // which of ITS workflow templates the device will be detached from.
+  for (const name of willDetachWorkflowAttachments) console.log("will detach:", name);
+}
+
+/**
+ * The DESTINATION side. There is no inbox: an offer names no destination, so a
+ * pending offer is discoverable only by its code. Build a "paste a code" entry
+ * point rather than a notification list.
+ */
+export async function acceptAnOffer(code: string) {
+  const offered = await xg.transferOffers.get(code);
+  if (offered.status !== "pending") {
+    console.log("this code is", offered.status);
+    return;
+  }
+  // The recipient's view is a deliberately thin allowlist: device name, model,
+  // and the source organization's name. No device id, no serial, no tenancy.
+  console.log(offered.device?.name, offered.device?.model.name, offered.from.organizationName);
+
+  const { device, transfer } = await xg.transferOffers.accept(code, {
+    workspaceId: yardId,
+  });
+  console.log(device.id, transfer.crossOrg);
+}
+
+export async function declineOrCancel(code: string) {
+  await xg.transferOffers.decline(code); // destination refuses; the source sees it
+  await xg.transferOffers.cancel(code); // source withdraws — BY CODE, never by id
+}
+
+/** What YOUR organization sent, plus what it has accepted. Not an inbox. */
+export async function reviewOffers() {
+  for (const offer of await xg.transferOffers.list({ status: "pending" })) {
+    console.log(offer.direction, offer.code, offer.deviceName, offer.expiresAt);
+  }
+  for (const offer of await xg.transferOffers.listForDevice(deviceId)) {
+    console.log(offer.status, offer.resolvedAt);
+  }
+}
+
+export async function catchTransferFailures() {
+  try {
+    await xg.devices.transfer(deviceId, { workspaceId: otherWorkspaceId });
+  } catch (e) {
+    if (!isXorgateError(e)) throw e;
+    switch (e.code) {
+      case "SAME_WORKSPACE":
+        break;
+      case "SERIAL_COLLISION":
+        break;
+      case "TRANSFER_IN_PROGRESS":
+      case "CONCURRENT_MODIFICATION":
+        break;
+      case "TRANSFER_FAILED":
+        // Rolled back. Nothing changed. Safe to retry.
+        break;
+      case "NOT_FOUND":
+        // The device OR the destination workspace. 404 rather than 403 is
+        // deliberate: naming another tenant's workspace would be a leak.
+        break;
+      default:
+        throw e;
+    }
+  }
+}

@@ -4,6 +4,7 @@ import { isXorgateError } from "../errors.js";
 import type { HttpCore } from "../http.js";
 import type {
   AgentBuild,
+  BulkTransferItem,
   CommandAccepted,
   CreateDeviceInput,
   Device,
@@ -16,6 +17,9 @@ import type {
   IterateOptions,
   ListDevicesParams,
   Page,
+  TransferDeviceInput,
+  TransferPreview,
+  TransferResult,
   UpdateDeviceInput,
   VideoChannel,
 } from "../types.js";
@@ -238,6 +242,155 @@ export class DevicesResource {
       this.tenancy,
     );
     return unwrapList<VideoChannel>(body, "channels");
+  }
+
+  // ---- transfer ------------------------------------------------------------
+
+  /**
+   * Move a device to another workspace — and, with `organizationId`, to another
+   * organization the caller also administers. Owner/admin. Returns the moved
+   * device and a summary of what the move did.
+   *
+   * ## The device is not touched, so it does not have to be online
+   *
+   * A transfer re-tenants the device by editing the AWS IoT registry and the
+   * retained configuration message, never the box. Certificates and identity do
+   * not change, and the tenancy is never persisted on disk. **An offline device
+   * is a normal success, not an error** — the new tenancy is staged in the cloud
+   * and the device adopts it the moment it next connects. Never gate a call to
+   * this method on `device.status`.
+   *
+   * ## What travels with the device
+   *
+   * **All of its historical telemetry and all of its recorded footage.** Both
+   * are device-keyed, both move, and across organizations that is a
+   * data-disclosure event. There is no purge-on-transfer;
+   * {@link previewTransfer} states it as `carriesHistory: true` so a
+   * confirmation dialog can say so out loud.
+   *
+   * Across organizations the device is also DETACHED from any workflow template
+   * of the old organization, because templates are organization-scoped and the
+   * attachment would otherwise execute a template the new owner cannot see.
+   * `transfer.detachedWorkflowAttachments` names them.
+   *
+   * ## Read the summary; a 200 is not uniformly clean
+   *
+   * - `scopeAttributes: "failed"` is a DEGRADED success. The device moved and
+   *   was told its new topic, but the broker was not told to allow it, so the
+   *   device falls back to the still-ingested legacy telemetry plane and any
+   *   workspace-scoped vended credential sees nothing until a settings save
+   *   re-asserts the attributes.
+   * - `adoption` is the only honest signal of whether the DEVICE has caught up,
+   *   and `"pending"` right afterwards is normal. Do not read "the device is
+   *   still publishing" as proof: AWS IoT resolves the policy's tenancy
+   *   variables at CONNECT time, so an established session keeps its old
+   *   resolution and a botched transfer can look clean for hours.
+   *
+   * ## Failures
+   *
+   * `SAME_WORKSPACE` 400 · `SERIAL_COLLISION` / `TRANSFER_IN_PROGRESS` /
+   * `CONCURRENT_MODIFICATION` 409 · a device or workspace outside the caller's
+   * reach 404, never 403, because confirming another tenant's workspace exists
+   * is itself a leak · `TRANSFER_FAILED` 502, which means the sequence was
+   * ROLLED BACK and nothing changed, so it is safe to retry.
+   *
+   * A workspace-scoped session token is refused with 403: a transfer spans two
+   * workspaces and such a token is confined to one by construction. An API key
+   * attempting the cross-organization fast path is refused for the same kind of
+   * reason — it is bound to one organization — and should mint a transfer offer
+   * instead.
+   */
+  async transfer(id: string, input: TransferDeviceInput): Promise<TransferResult> {
+    const body = await this.http.request(
+      "POST",
+      `/devices/${encodeURIComponent(id)}/transfer`,
+      {
+        body: {
+          workspaceId: input.workspaceId,
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+        },
+        ...(input.signal ? { signal: input.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return {
+      device: normalizeDevice(unwrap(body, "device")),
+      transfer: unwrap(body, "transfer"),
+    };
+  }
+
+  /**
+   * The dry run behind a confirmation dialog: what would move, what would be
+   * detached, what is mid-flight, and whether the transfer would be refused.
+   * Writes nothing.
+   *
+   * **Blockers are returned, not thrown.** An empty `blockers` array means the
+   * transfer would proceed; a non-empty one carries the code and the message the
+   * real call would have answered with, so the dialog can explain the refusal
+   * without provoking it. Everything else on the preview is context to render —
+   * counts of running workflow runs, open recording sessions and session tokens
+   * that will lose the device, and `carriesHistory`, which is always `true`.
+   */
+  async previewTransfer(id: string, input: TransferDeviceInput): Promise<TransferPreview> {
+    const body = await this.http.request(
+      "GET",
+      `/devices/${encodeURIComponent(id)}/transfer/preview`,
+      {
+        query: {
+          workspaceId: input.workspaceId,
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+        },
+        ...(input.signal ? { signal: input.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return unwrap<TransferPreview>(body, "preview");
+  }
+
+  /**
+   * Transfer several devices to the same destination.
+   *
+   * **This is a CLIENT-SIDE LOOP, not a batch endpoint.** The platform has no
+   * bulk transfer route: `POST /devices/{id}/transfer` takes exactly one id, and
+   * this method calls it once per device. It is here so that every caller does
+   * not write the loop slightly differently — in particular, it runs
+   * **sequentially on purpose**. Each transfer publishes a retained MQTT message
+   * and writes AWS IoT thing attributes, and firing N of those in parallel is a
+   * good way to find the account's IoT control-plane limits during an operation
+   * whose whole design depends on two writes staying adjacent.
+   *
+   * It does NOT stop at the first failure, and it is NOT atomic: a device that
+   * threw is recorded in its entry with `ok: false` and the rest still run. A
+   * partial result is the honest outcome and there is nothing to roll back — a
+   * failed transfer has already rolled itself back.
+   *
+   * Only same-organization bulk moves are expected to work in practice. A
+   * cross-organization move is a handover and is done one device at a time.
+   */
+  async transferMany(
+    ids: readonly string[],
+    input: TransferDeviceInput,
+  ): Promise<BulkTransferItem[]> {
+    const out: BulkTransferItem[] = [];
+    for (const id of ids) {
+      if (input.signal?.aborted) break;
+      try {
+        const result = await this.transfer(id, input);
+        out.push({ deviceId: id, ok: true, ...result });
+      } catch (e) {
+        if (!isXorgateError(e)) throw e;
+        out.push({
+          deviceId: id,
+          ok: false,
+          error: {
+            code: e.code,
+            message: e.message,
+            ...(e.status !== undefined ? { status: e.status } : {}),
+          },
+        });
+      }
+    }
+    return out;
   }
 
   // ---- commands ------------------------------------------------------------

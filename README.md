@@ -42,8 +42,8 @@ silently drop the version.
 ## What you get
 
 - **One client, resource modules.** `xg.devices`, `xg.workspaces`,
-  `xg.telemetry`, `xg.media`, `xg.apiKeys`, `xg.workflowTemplates`, and so on,
-  mirroring the API.
+  `xg.telemetry`, `xg.media`, `xg.apiKeys`, `xg.workflowTemplates`,
+  `xg.transferOffers`, and so on, mirroring the API.
 - **Tenancy is configuration, not per-call boilerplate.** `organizationId` is
   required at construction and travels on every request.
 - **One error type.** Everything thrown is a `XorgateError` carrying
@@ -77,6 +77,59 @@ is exactly where it was last seen.
 
 **`telemetry.history()` does not paginate, and `truncated` is the only signal.**
 A truncated result is a complete-looking array. Check it on every call.
+
+## Transferring a device
+
+Moving a device to another workspace — or handing it to another organization
+entirely — is `xg.devices.transfer()`, with `xg.devices.previewTransfer()` as the
+dry run behind the confirmation dialog. Three things are worth knowing before
+the first call.
+
+**The device is never touched, so it does not have to be online.** A transfer
+re-tenants a device by editing the AWS IoT registry and the retained
+configuration message, not the box: certificates and identity do not change and
+the tenancy is never persisted on disk. An offline device stages the new tenancy
+in the cloud and adopts it the moment it next connects. Never gate a transfer on
+`device.status`.
+
+**All of its history goes with it.** Every telemetry row and every recorded
+segment is device-keyed and moves. Across organizations that is a
+data-disclosure event; `preview.carriesHistory` is always `true` and exists to
+be rendered, not branched on.
+
+**A 200 is not uniformly clean.** Read the summary:
+
+```ts
+const preview = await xg.devices.previewTransfer(deviceId, { workspaceId })
+if (preview.blockers.length > 0) return preview.blockers   // returned, not thrown
+
+const { device, transfer } = await xg.devices.transfer(deviceId, { workspaceId })
+
+// The device moved and was told its new telemetry topic, but the BROKER was not
+// told to allow it: it falls back to the legacy (still ingested) plane until any
+// settings save re-asserts the attributes.
+if (transfer.scopeAttributes === "failed") warn(transfer.warnings)
+
+// "pending" right after a transfer is NORMAL — the change is already complete in
+// the cloud. "unknown" means the device has never reported a telemetry scope at
+// all, which is an agent older than v0.0.6, not a failure to converge.
+console.log(transfer.adoption) // "confirmed" | "pending" | "unknown"
+```
+
+Handing a device to an organization you have no membership in goes through a
+code instead, because one request cannot be authorized in two tenancies:
+
+```ts
+const { offer } = await source.transferOffers.create(deviceId)   // send offer.code
+const preview = await destination.transferOffers.get(offer.code) // a thin allowlist
+await destination.transferOffers.accept(offer.code, { workspaceId })
+```
+
+**There is no inbox of incoming offers, by design.** An offer names no
+destination — not knowing the destination's organization id is the whole point
+of the code — so a pending offer is discoverable only by its code.
+`transferOffers.list()` shows what your organization sent plus what it accepted.
+Build a "paste a code" entry point, not a notification list.
 
 ## Finding templates by tag
 

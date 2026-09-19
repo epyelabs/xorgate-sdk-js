@@ -10,6 +10,7 @@ import { MediaResource } from "./resources/media.js";
 import { MembershipsResource } from "./resources/memberships.js";
 import { OrganizationsResource } from "./resources/organizations.js";
 import { TelemetryResource } from "./resources/telemetry.js";
+import { TransferOffersResource } from "./resources/transfer-offers.js";
 import { WorkflowTemplatesResource } from "./resources/workflow-templates.js";
 import { WorkspacesResource } from "./resources/workspaces.js";
 import type { Tenancy } from "./resources/tenancy.js";
@@ -60,6 +61,8 @@ export interface XorgateClient {
   readonly media: MediaResource;
   readonly telemetry: TelemetryResource;
   readonly workflowTemplates: WorkflowTemplatesResource;
+  /** Cross-organization device handover. See {@link TransferOffersResource}. */
+  readonly transferOffers: TransferOffersResource;
 }
 
 class Client implements XorgateClient {
@@ -74,6 +77,7 @@ class Client implements XorgateClient {
   readonly media: MediaResource;
   readonly telemetry: TelemetryResource;
   readonly workflowTemplates: WorkflowTemplatesResource;
+  readonly transferOffers: TransferOffersResource;
 
   private readonly tenancy: Tenancy;
 
@@ -94,6 +98,7 @@ class Client implements XorgateClient {
     this.media = new MediaResource(http, this.tenancy);
     this.telemetry = new TelemetryResource(http, this.tenancy);
     this.workflowTemplates = new WorkflowTemplatesResource(http, this.tenancy);
+    this.transferOffers = new TransferOffersResource(http, this.tenancy);
 
     // The credential itself is already unserializable (see `hideProperties`),
     // so this is ergonomics rather than safety: without it, serializing a client

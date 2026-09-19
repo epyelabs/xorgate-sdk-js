@@ -126,6 +126,16 @@ export interface RawRequestInit {
   /** Overrides the client default for this call only. */
   workspaceId?: string;
   signal?: AbortSignal;
+  /**
+   * Called with the HTTP status of a SUCCESSFUL response, before the body is
+   * returned. The SDK hands back bodies, not responses, so this is how a
+   * caller reaches a status that carries meaning of its own — the one case in
+   * the API today being `POST /devices/{id}/transfer-offers`, where 201 and 200
+   * have byte-identical bodies and mean "minted" and "reused" respectively.
+   * Not called for an error status; those arrive as a thrown `XorgateError`
+   * whose `status` carries it.
+   */
+  onStatus?: (status: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1085,4 +1095,254 @@ export interface WorkflowTemplateTagCount {
   tag: string;
   /** Templates in this organization carrying the tag. */
   count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Device transfer
+// ---------------------------------------------------------------------------
+
+/**
+ * A device's tenancy: the workspace it lives in and the organization that
+ * workspace belongs to. There is no `devices.organization_id` on the platform —
+ * a device's organization is derived through its workspace — so moving a device
+ * between workspaces and moving it between organizations are the SAME write.
+ * What differs is the blast radius.
+ */
+export interface TransferTenancy {
+  workspaceId: string;
+  organizationId: string;
+}
+
+/**
+ * What the transfer did to the device's AWS IoT thing attributes, which are the
+ * half of tenancy the broker ENFORCES (the retained config is the half that
+ * INSTRUCTS).
+ *
+ * `failed` is a **degraded success returned with a 200**, not an error: the
+ * device moved and was told its new telemetry topic, but the broker was not
+ * told to allow it. The device falls back to the legacy unscoped telemetry
+ * plane, which is still ingested, so history and the first-party console keep
+ * working — but a workspace-scoped vended credential sees nothing until any
+ * subsequent settings save re-asserts the attributes. Surface it; do not treat
+ * every 200 as uniformly clean.
+ */
+export type ScopeAttributeResult = "unchanged" | "written" | "failed";
+
+/**
+ * Whether the DEVICE has adopted its new tenancy yet. **Three values, never
+ * two.**
+ *
+ * - `confirmed` — the device itself said so. Agent `v0.0.6`+ reports
+ *   `effective.telemetryScope` on every config report, and that block is the
+ *   only cloud-side evidence a transfer actually landed on the box.
+ * - `pending` — the device has reported, and not yet under the new tenancy.
+ *   Immediately after a transfer this is **normal, not an error**: the ownership
+ *   change is already complete and authoritative in the cloud, and an offline
+ *   device converges the moment it next connects.
+ * - `unknown` — the device has never told us. An agent older than `v0.0.6`
+ *   sends no `telemetryScope` at all, and its absence means "never reported",
+ *   which is a different fact from "reported, and behind". Never collapse it
+ *   into either of the others.
+ *
+ * `configRev` / `reportedConfig.rev` is **not** evidence either way: a scope
+ * change deliberately does not move the rev, so the two are equal before and
+ * after a successful transfer.
+ */
+export type TransferAdoption = "confirmed" | "pending" | "unknown";
+
+/** What a completed transfer did. Returned by `transfer()` and by accepting an offer. */
+export interface TransferSummary {
+  /** The `device_transfers` audit row. Quote it in a support question. */
+  id: string;
+  deviceId: string;
+  from: TransferTenancy;
+  to: TransferTenancy;
+  crossOrg: boolean;
+  /**
+   * Workflow templates the device was detached from, by NAME. Always empty for
+   * a same-organization move: templates are organization-scoped and the
+   * organization did not change. Non-empty only across organizations, where the
+   * attachment would otherwise point at a template the new owner cannot see and
+   * the old owner no longer controls.
+   */
+  detachedWorkflowAttachments: string[];
+  kvsChannelsRetagged: number;
+  scopeAttributes: ScopeAttributeResult;
+  adoption: TransferAdoption;
+  /** Human-readable, already written for display. Render them; do not parse them. */
+  warnings: string[];
+}
+
+/** `POST /devices/{id}/transfer`: the moved device plus what the move did. */
+export interface TransferResult {
+  device: Device;
+  transfer: TransferSummary;
+}
+
+export interface TransferWorkflowAttachment {
+  id: string;
+  templateId: string;
+  templateName: string;
+}
+
+/** Each maps to the status the real transfer would return: 400 or 409. */
+export type TransferBlockerCode =
+  | "SAME_WORKSPACE"
+  | "SERIAL_COLLISION"
+  | "TRANSFER_IN_PROGRESS";
+
+export interface TransferBlocker {
+  code: TransferBlockerCode;
+  message: string;
+}
+
+/**
+ * A dry run. No writes, and blockers are RETURNED rather than thrown, so a
+ * confirmation dialog can show why a transfer would be refused without having
+ * to catch an error to find out.
+ */
+export interface TransferPreview {
+  deviceId: string;
+  deviceName: string | null;
+  serial: string | null;
+  from: TransferTenancy & { workspaceName: string; organizationName: string };
+  to: TransferTenancy & { workspaceName: string; organizationName: string };
+  crossOrg: boolean;
+  /** Detached by the transfer if it proceeds. Empty for a same-organization move. */
+  workflowAttachments: TransferWorkflowAttachment[];
+  /** Left to finish; counted so the operator knows they exist. */
+  runningWorkflowRuns: number;
+  /** Still accepting segment uploads; they keep uploading (media is device-keyed). */
+  openMediaSessions: number;
+  /** Workspace-scoped session tokens naming the SOURCE workspace. They lose the device. */
+  staleSessionTokens: number;
+  kvsChannels: number;
+  /**
+   * Always literally `true`. **Meant to be rendered, not branched on**: every
+   * historical telemetry row and every recorded segment is device-keyed and
+   * travels with the device. Across organizations that is a data-disclosure
+   * event, and the platform deliberately offers no purge-on-transfer.
+   */
+  carriesHistory: true;
+  /** Non-empty means the transfer would be REFUSED. Empty means it would proceed. */
+  blockers: TransferBlocker[];
+  warnings: string[];
+}
+
+export interface TransferDeviceInput {
+  /** The destination workspace. Required. */
+  workspaceId: string;
+  /**
+   * The destination ORGANIZATION, for the both-membership fast path: the caller
+   * must hold `owner` or `admin` in it as a USER. An API key is bound to one
+   * organization and is refused with 403 — use a transfer offer instead.
+   * Omit for a same-organization move.
+   */
+  organizationId?: string;
+  signal?: AbortSignal;
+}
+
+/** One entry of a bulk transfer. Exactly one of `transfer` / `error` is set. */
+export interface BulkTransferItem {
+  deviceId: string;
+  ok: boolean;
+  device?: Device;
+  transfer?: TransferSummary;
+  error?: XorgateErrorLike;
+}
+
+/** Structural, so this file does not have to import the error class. */
+export interface XorgateErrorLike {
+  code: string;
+  message: string;
+  status?: number;
+}
+
+// ---- transfer offers -------------------------------------------------------
+
+export type TransferOfferStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "cancelled"
+  | "expired";
+
+/**
+ * The SENDER's view of an offer. Returned by `create()`, `list()`,
+ * `listForDevice()`, `decline()` and alongside an accept.
+ *
+ * Do not confuse it with {@link TransferOfferPreview}, which is what the
+ * RECIPIENT sees and is deliberately much smaller.
+ */
+export interface TransferOffer {
+  id: string;
+  /** The bearer token. Whoever holds it can preview, accept or decline. */
+  code: string;
+  status: TransferOfferStatus;
+  /** `outgoing` = your organization created it; `incoming` = your organization accepted it. */
+  direction: "outgoing" | "incoming";
+  deviceId: string;
+  deviceName: string | null;
+  from: { organizationId: string; workspaceId: string };
+  /** Null until someone accepts. */
+  acceptedBy: { organizationId: string; workspaceId: string | null } | null;
+  /** The `device_transfers` row the accept produced; null until then. */
+  transferId: string | null;
+  /** Seven days after creation. */
+  expiresAt: string;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * The RECIPIENT's view — `GET /transfer-offers/{code}`. **A different, smaller
+ * type, and deliberately not a subset of {@link TransferOffer} that happens to
+ * be short.**
+ *
+ * It is an allowlist. There is no `deviceId`, no `serial`, no `workspaceId`, no
+ * `organizationId`, no configuration and no telemetry, because the code is a
+ * bearer token held by an organization that is not yet entitled to the device.
+ * A code that leaked must not double as a read primitive against someone else's
+ * fleet. The backend has tests asserting those absences; merging the two types
+ * here would quietly invite the leak back through the SDK.
+ */
+export interface TransferOfferPreview {
+  code: string;
+  status: TransferOfferStatus;
+  expiresAt: string;
+  createdAt: string;
+  /** Null if the device has since been deleted. */
+  device: {
+    name: string | null;
+    model: { id: string; name: string; sku: string };
+  } | null;
+  from: { organizationName: string };
+}
+
+export interface CreatedTransferOffer {
+  offer: TransferOffer;
+  /**
+   * Workflow templates, by NAME, that the SOURCE loses if this offer is
+   * accepted by a different organization. Named here because the source is not
+   * present at the accept — this is its last chance to reconsider.
+   */
+  willDetachWorkflowAttachments: string[];
+  /**
+   * `false` when the API minted a new code (HTTP 201), `true` when it handed
+   * back the device's already-open offer (HTTP 200). The two bodies are
+   * IDENTICAL on the wire, so this flag is the only way to tell them apart, and
+   * it is why the SDK does not collapse the two statuses.
+   */
+  reused: boolean;
+}
+
+export interface AcceptedTransferOffer {
+  device: Device;
+  transfer: TransferSummary;
+  offer: TransferOffer;
+}
+
+export interface ListTransferOffersParams {
+  status?: TransferOfferStatus;
+  signal?: AbortSignal;
 }

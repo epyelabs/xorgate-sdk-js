@@ -328,7 +328,7 @@ export class HttpCore {
       detach();
     }
 
-    return await readResponse<T>(response, method, url, requestId);
+    return await readResponse<T>(response, method, url, requestId, init.onStatus);
   }
 
   private async credential(): Promise<string> {
@@ -438,7 +438,17 @@ async function readResponse<T>(
   method: HttpMethod,
   url: string,
   requestId: string,
+  onStatus?: (status: number) => void,
 ): Promise<T> {
+  // Only on success: an error status is carried by the thrown XorgateError, and
+  // a caller reading a 2xx-meaning hook must never see a 409 through it.
+  if (response.ok) {
+    try {
+      onStatus?.(response.status);
+    } catch {
+      /* a caller's observer must never fail the request */
+    }
+  }
   if (response.status === 204 || response.status === 205) {
     return undefined as T;
   }
@@ -575,6 +585,15 @@ const HINTS: Partial<Record<XorgateApiErrorCode, string>> = {
   ORGANIZATION_REQUIRED:
     "Should be unreachable through the SDK, which always sends " +
     "X-Organization-Id. If you see it, the header was stripped in transit.",
+  TRANSFER_FAILED:
+    "The transfer was ROLLED BACK: the device is still in its original " +
+    "workspace and nothing changed. Safe to retry.",
+  SERIAL_COLLISION:
+    "Serials are unique per workspace and the destination already has a device " +
+    "with this one. Rename or remove that device there first.",
+  TRANSFER_IN_PROGRESS:
+    "Another transfer of this device has not finished. Stale ones are swept " +
+    "lazily, so retry in a moment before investigating.",
 };
 
 function hintFor(code: XorgateApiErrorCode): string | undefined {

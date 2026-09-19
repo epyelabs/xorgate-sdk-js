@@ -38,7 +38,16 @@ export type XorgateApiErrorCode =
   | "COMMAND_PUBLISH_FAILED"
   | "DIST_BUCKET_UNCONFIGURED"
   | "DIST_MANIFEST_UNAVAILABLE"
-  | "DIST_MANIFEST_INVALID";
+  | "DIST_MANIFEST_INVALID"
+  // Device transfer. `SAME_WORKSPACE` is a 400; `SERIAL_COLLISION`,
+  // `TRANSFER_IN_PROGRESS` and `CONCURRENT_MODIFICATION` are 409s;
+  // `TRANSFER_FAILED` is a 502 that means the sequence was ROLLED BACK and
+  // nothing changed, so it is the one 5xx here that is safe to retry blindly.
+  | "SAME_WORKSPACE"
+  | "SERIAL_COLLISION"
+  | "TRANSFER_IN_PROGRESS"
+  | "CONCURRENT_MODIFICATION"
+  | "TRANSFER_FAILED";
 
 /** Codes the SDK raises itself. No HTTP request necessarily happened. */
 export type XorgateClientErrorCode =
@@ -47,7 +56,14 @@ export type XorgateClientErrorCode =
   | "TIMEOUT"
   | "ABORTED"
   | "NETWORK"
-  | "INVALID_RESPONSE";
+  | "INVALID_RESPONSE"
+  /**
+   * The device is no longer inside the tenancy this client's live credential
+   * was vended for — it was transferred to another workspace or organization.
+   * Raised by `@xorgate/react`, which is where a stale live scope is visible;
+   * declared here so both packages name the condition identically.
+   */
+  | "DEVICE_OUT_OF_SCOPE";
 
 export type XorgateErrorCode = XorgateApiErrorCode | XorgateClientErrorCode;
 
