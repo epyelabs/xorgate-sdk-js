@@ -3,6 +3,41 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.8.0
+
+Recorded telemetry as session artifacts (API 0.9.0). Purely additive: an older
+server never sends the new field, and nothing that worked before behaves
+differently.
+
+### Added
+
+- **`ReplayManifest.telemetry?: ReplayTelemetry`** — the recorded-telemetry
+  sessions overlapping the replay window, each with a presigned `overview.v1`
+  artifact (route line and scrub preview for every metric, gzipped columnar
+  JSON, typically 15 to 40 KB), its raw 60 s segments clipped to the window,
+  and the session's `insights`. Every URL shares `urlExpiresAt` with the video
+  URLs. `overview` is `null` while the session is `open`; build one from
+  `segments` and refetch the manifest about every 60 s until it closes. The
+  block has its own cap of 1,500 segments, reported through `truncated`
+  rather than a 400. It is **optional on the type** because a server older
+  than API 0.9.0 never sends it: fall back to `telemetry.history()` when it
+  is absent.
+- **`replayManifest(id, { ..., telemetry: false })`** — asks the server to omit
+  the block (sent as `telemetry=0`; nothing is sent otherwise).
+- **`telemetry.sessions.list(deviceId, { from, to, status, limit, offset })`**,
+  plus `iterate()` and `listAll()` — the recorded-telemetry session index with
+  counters and `insights`, paginated (`limit` 1 to 200, default 25), no URLs.
+  `from`/`to` match sessions OVERLAPPING the range, like
+  `media.sessions.list()`, so a recording run's distance is the sum over the
+  sessions returned for the run's window. `insights` is `null` until the
+  session's overview has been built.
+- Types: `ReplayTelemetry`, `ReplayTelemetrySession`, `ReplayTelemetryOverview`,
+  `ReplayTelemetrySegment`, `TelemetryInsights` (known v1 summaries typed,
+  index signature for insights added later, `{ value: null, reason }` where
+  one could not be computed), `TelemetryInsightEvent`,
+  `TelemetryInsightNotComputable`, `TelemetrySession`,
+  `ListTelemetrySessionsParams`.
+
 ## 0.7.0
 
 Device transfer: moving a device to another workspace, and handing one to

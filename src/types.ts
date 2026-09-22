@@ -685,6 +685,14 @@ export interface ReplayManifest {
   /** Real URL TTL minus a 5-minute margin. Refetch before this. */
   urlExpiresAt: number;
   sessions: ReplaySession[];
+  /**
+   * Recorded telemetry for the window, as presigned S3 artifacts (API 0.9.0).
+   * ABSENT on an older server and when the request said `telemetry: false`,
+   * so a consumer that wants telemetry falls back to `telemetry.history()`
+   * when it is missing. Telemetry sessions are a different id space from
+   * video sessions; they are joined to the replay by time.
+   */
+  telemetry?: ReplayTelemetry;
 }
 
 export interface ReplaySession {
@@ -718,6 +726,136 @@ export interface ReplayGap {
   reason: "missing-segments" | "evicted-head";
 }
 
+/** The `telemetry` block of a replay manifest. Timestamps epoch ms. */
+export interface ReplayTelemetry {
+  /** Every telemetry session overlapping the replay window, in start order. */
+  sessions: ReplayTelemetrySession[];
+  /**
+   * The window held more than 1,500 telemetry segments and only the earliest
+   * are listed. Not an error (unlike the video caps): narrow the window.
+   */
+  truncated: boolean;
+}
+
+export interface ReplayTelemetrySession {
+  /** Device-minted UUIDv7 of the TELEMETRY session (not a video session id). */
+  id: string;
+  /** Advisory, like media sessions: closes ~10 min after segments stop. */
+  status: SessionStatus;
+  rateHz: number | null;
+  /** The WORST clock seen across the session's segments; `rtc` is common. */
+  timeSource: TimeSource | null;
+  /** First sample in the session, not clipped to the window. */
+  from: number;
+  /** Last sample so far. */
+  to: number;
+  /**
+   * The precomputed overview artifact. `null` while the session is open, and
+   * briefly after it closes until the artifact is built: build one from
+   * `segments` instead, and refetch the manifest about every 60 s while any
+   * session is open.
+   */
+  overview: ReplayTelemetryOverview | null;
+  /** Only the raw segments overlapping the window, ordered by `startTs`. */
+  segments: ReplayTelemetrySegment[];
+  /** Byte-identical to the `insights` block inside the overview. `null` until built. */
+  insights: TelemetryInsights | null;
+}
+
+export interface ReplayTelemetryOverview {
+  /** Additive changes keep `overview.v1`; a breaking change is a new name. */
+  format: "overview.v1";
+  /** Presigned GET. `Content-Type: application/json`, `Content-Encoding: gzip`, so `fetch()` inflates it. */
+  url: string;
+  /** Gzipped size; null for an artifact built before sizes were recorded. */
+  bytes: number | null;
+  builtAt: number;
+}
+
+/**
+ * One of the device's own 60 s segment files: gzipped JSONL, served with
+ * `Content-Encoding: gzip`, so `fetch()` yields plain text. A header line,
+ * then one `{ ts, mono, seq, metrics }` sample per line. Immutable.
+ */
+export interface ReplayTelemetrySegment {
+  /** Order by `startTs`, never by `seq`. */
+  seq: number;
+  /** First sample IN THE FILE, epoch ms. */
+  startTs: number;
+  endTs: number;
+  samples: number;
+  bytes: number;
+  url: string;
+}
+
+/** `{ value: null, reason }` where an insight could not be computed. */
+export interface TelemetryInsightNotComputable {
+  value: null;
+  reason: string;
+}
+
+/** A timestamped finding the timeline can pin and a click can seek to. */
+export interface TelemetryInsightEvent {
+  kind: string;
+  ts: number;
+  endTs?: number;
+  /** `[lon, lat]`. */
+  position?: [number, number];
+  value?: number;
+  unit?: string;
+}
+
+/**
+ * Per-session summaries computed from the recorded segments when the overview
+ * is built (v1: duration, distance, speed, position, altitude, gpsQuality,
+ * system, lte, and `stops` as events). Versioned PER INSIGHT through
+ * `computed`, and additive: new insight ids arrive as new keys, which is why
+ * the index signature is there. Read the ones you know; ignore the rest.
+ */
+export interface TelemetryInsights {
+  /** `{ insightId: version }` for every insight present. */
+  computed: Record<string, number>;
+  computedAt: number;
+  duration?: {
+    totalMs: number;
+    movingMs: number;
+    idleMs: number;
+    movingThresholdKph: number;
+    [key: string]: unknown;
+  };
+  distance?: {
+    /** Haversine over ACCEPTED fixes; `accept` records the rule. */
+    meters: number | TelemetryInsightNotComputable;
+    method?: string;
+    accept?: Record<string, unknown>;
+    fixesUsed?: number;
+    fixesRejected?: number;
+    /** The integral of `gps.speed` over the same fixes; a large disagreement marks a suspect trace. */
+    crossCheckMeters?: number | TelemetryInsightNotComputable;
+    [key: string]: unknown;
+  };
+  speed?: {
+    maxKph: number | TelemetryInsightNotComputable;
+    avgMovingKph?: number | TelemetryInsightNotComputable;
+    source?: string;
+    [key: string]: unknown;
+  };
+  position?: {
+    /** `[lon, lat]`. */
+    start: [number, number] | TelemetryInsightNotComputable;
+    end: [number, number] | TelemetryInsightNotComputable;
+    [key: string]: unknown;
+  };
+  altitude?: { minM?: number; maxM?: number; gainM?: number; lossM?: number; [key: string]: unknown };
+  gpsQuality?: { fixRatio?: number; avgSatellites?: number; avgHdop?: number; [key: string]: unknown };
+  system?: { maxCpuTempC?: number; throttledMs?: number; [key: string]: unknown };
+  lte?: { minRssi?: number; avgRssi?: number; resets?: number; [key: string]: unknown };
+  /** Bounded per kind; never a per-sample series. */
+  events: TelemetryInsightEvent[];
+  /** Insights added after this SDK was published. */
+  [insightId: string]: unknown;
+}
+
 // ---- telemetry -------------------------------------------------------------
 
 export interface TelemetryReading {
@@ -747,6 +885,35 @@ export interface TelemetryHistory {
   bucketSeconds: number | null;
   /** True means the row cap was hit and the result is INCOMPLETE. */
   truncated: boolean;
+}
+
+/**
+ * One recorded-telemetry session as the index knows it: lifecycle, counters
+ * and the `insights` mirror, with NO URLs. ISO timestamps, like the media
+ * sessions list; the replay manifest is where the epoch-ms exception lives.
+ */
+export interface TelemetrySession {
+  /** Device-minted UUIDv7. Not a video session id: relate the two by time. */
+  id: string;
+  deviceId: string;
+  status: SessionStatus;
+  rateHz: number | null;
+  timeSource: TimeSource | null;
+  /** First sample in the session. */
+  from: string;
+  /** Last sample so far. */
+  to: string;
+  /** Server-side arrival of the newest segment: the close-detection clock. */
+  lastSegmentAt: string;
+  segments: number;
+  samples: number;
+  /** Gzipped bytes across the segments. */
+  bytes: number;
+  /** `null` until the overview artifact exists. */
+  overviewBuiltAt: string | null;
+  overviewBytes: number | null;
+  /** `null` until the overview has been built. */
+  insights: TelemetryInsights | null;
 }
 
 export interface TelemetryTableColumn {
@@ -955,14 +1122,29 @@ export interface ListSessionsParams extends ListParams {
 /** `group=runs` needs `sort=startedAt`, so it is a separate method, not a flag. */
 export type ListRunsParams = Omit<ListSessionsParams, "sort">;
 
-export type ReplayManifestParams =
+export type ReplayManifestParams = (
   | { sessionId: string; from?: never; to?: never; streamKey?: never }
   | {
       sessionId?: never;
       from: string | Date;
       to: string | Date;
       streamKey?: StreamKey;
-    };
+    }
+) & {
+  /**
+   * `false` asks the server to omit `replay.telemetry` (a video-only player).
+   * Default: included, on a server that has it.
+   */
+  telemetry?: boolean;
+};
+
+export interface ListTelemetrySessionsParams extends ListParams {
+  /** Matches sessions OVERLAPPING the range, like `media.sessions.list()`. */
+  from?: string | Date;
+  to?: string | Date;
+  status?: SessionStatus | "any";
+  signal?: AbortSignal;
+}
 
 export interface TelemetryHistoryParams {
   /** REQUIRED. The range may not exceed 31 days. */

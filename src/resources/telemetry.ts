@@ -1,11 +1,13 @@
-import { iteratePaged } from "../pagination.js";
+import { drain, iteratePaged } from "../pagination.js";
 import { commaList, isoOrUndefined, unwrap, unwrapPage, normalizePageMeta } from "../normalize.js";
 import type { HttpCore } from "../http.js";
 import type {
   IterateOptions,
   LatestByMetric,
   LatestReading,
+  ListTelemetrySessionsParams,
   Page,
+  TelemetrySession,
   TelemetryColumnSource,
   TelemetryHistory,
   TelemetryHistoryParams,
@@ -18,11 +20,78 @@ import type {
 } from "../types.js";
 import type { Tenancy } from "./tenancy.js";
 
-export class TelemetryResource {
+/**
+ * `xg.telemetry.sessions`: the index of what a device RECORDED, one row per
+ * telemetry session with its counters and insights (distance, duration, max
+ * speed, stops, ...). No URLs, no object storage: the read for a sessions
+ * table or a "kilometres this month" roll-up. To play a session's telemetry,
+ * ask `media.replayManifest()` for its window.
+ */
+class TelemetrySessionsResource {
   constructor(
     private readonly http: HttpCore,
     private readonly tenancy: Tenancy,
   ) {}
+
+  /**
+   * Paginated (`limit` 1 to 200, default 25; out of range is a 400). `from`/`to`
+   * match sessions OVERLAPPING the range, so a recording run's distance is the
+   * sum of `insights.distance.meters` over the sessions returned for the run's
+   * window. `insights` is null on a session whose overview is not built yet
+   * (open, or closed within the last minute or so). Listing closes stale
+   * sessions as it goes, like `media.sessions.list()`.
+   */
+  async list(
+    deviceId: string,
+    params: ListTelemetrySessionsParams = {},
+  ): Promise<Page<TelemetrySession>> {
+    const body = await this.http.request(
+      "GET",
+      `/devices/${encodeURIComponent(deviceId)}/telemetry/sessions`,
+      {
+        query: {
+          limit: params.limit,
+          offset: params.offset,
+          order: params.order,
+          status: params.status,
+          from: isoOrUndefined(params.from),
+          to: isoOrUndefined(params.to),
+        },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return unwrapPage<TelemetrySession>(body, "sessions");
+  }
+
+  iterate(
+    deviceId: string,
+    params: ListTelemetrySessionsParams & IterateOptions = {},
+  ): AsyncIterableIterator<TelemetrySession> {
+    return iteratePaged<TelemetrySession>(
+      (limit, offset) => this.list(deviceId, { ...params, limit, offset }),
+      { ...params, defaultPageSize: params.limit ?? 25 },
+    );
+  }
+
+  listAll(
+    deviceId: string,
+    params: ListTelemetrySessionsParams & IterateOptions = {},
+  ): Promise<TelemetrySession[]> {
+    return drain(this.iterate(deviceId, params));
+  }
+}
+
+export class TelemetryResource {
+  /** Recorded telemetry sessions: the artifact index plus insights. */
+  readonly sessions: TelemetrySessionsResource;
+
+  constructor(
+    private readonly http: HttpCore,
+    private readonly tenancy: Tenancy,
+  ) {
+    this.sessions = new TelemetrySessionsResource(http, tenancy);
+  }
 
   /**
    * Raw rows up to 5,000, or bucket averages up to 10,000 with `interval`.

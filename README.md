@@ -78,6 +78,48 @@ is exactly where it was last seen.
 **`telemetry.history()` does not paginate, and `truncated` is the only signal.**
 A truncated result is a complete-looking array. Check it on every call.
 
+## Recorded telemetry as artifacts
+
+A replay manifest carries the recorded telemetry for its window as presigned S3
+objects, so a player fetches them straight from storage with no API call per
+metric group:
+
+```ts
+const replay = await xg.media.replayManifest(deviceId, { sessionId })
+
+for (const t of replay.telemetry?.sessions ?? []) {
+  if (t.overview) {
+    // route line, scrub preview, every metric: one gzipped JSON object
+    const overview = await fetch(t.overview.url).then((r) => r.json())
+  } else {
+    // still recording: build it from t.segments, refetch the manifest ~60 s
+  }
+  console.log(t.insights?.distance?.meters, t.insights?.speed?.maxKph)
+}
+```
+
+`replay.telemetry` is optional on the type because a server older than API
+0.9.0 never sends it. Telemetry sessions are a **different id space** from video
+sessions (both are minted on the device); the manifest joins them by time.
+
+For a table or a roll-up, list the sessions with their insights instead, with
+no URLs and no object storage involved:
+
+```ts
+const page = await xg.telemetry.sessions.list(deviceId, {
+  from: monthStart,
+  to: monthEnd,
+})
+const km = page.items.reduce(
+  (sum, s) =>
+    sum +
+    (typeof s.insights?.distance?.meters === "number"
+      ? s.insights.distance.meters
+      : 0),
+  0,
+) / 1000
+```
+
 ## Transferring a device
 
 Moving a device to another workspace — or handing it to another organization

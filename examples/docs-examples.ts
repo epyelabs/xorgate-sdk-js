@@ -670,9 +670,64 @@ export async function refreshManifest() {
   return replay;
 }
 
+export async function replayTelemetryArtifacts() {
+  const replay = await xg.media.replayManifest(deviceId, { sessionId });
+
+  if (!replay.telemetry) {
+    // Older server: fall back to xg.telemetry.history() over replay.from..to.
+    return null;
+  }
+
+  for (const t of replay.telemetry.sessions) {
+    if (t.overview) {
+      // fetch() inflates the gzip itself; the body is the overview.v1 object.
+      const overview = await fetch(t.overview.url).then((r) => r.json());
+      console.log(t.id, overview.groups.gps?.ts.length, t.insights?.distance);
+    } else {
+      // Still recording: build the route from the raw segments and refetch
+      // the manifest about every 60 s until the session closes.
+      for (const seg of t.segments) {
+        const text = await fetch(seg.url).then((r) => r.text());
+        console.log(seg.seq, text.split("\n").length);
+      }
+    }
+  }
+
+  if (replay.telemetry.truncated) {
+    // More than 1,500 telemetry segments in the window: narrow it.
+  }
+
+  const videoOnly = await xg.media.replayManifest(deviceId, {
+    sessionId,
+    telemetry: false,
+  });
+  return videoOnly;
+}
+
 // ---------------------------------------------------------------------------
 // resources/telemetry.mdx
 // ---------------------------------------------------------------------------
+
+export async function telemetrySessions() {
+  const page = await xg.telemetry.sessions.list(deviceId, {
+    from: "2026-09-01T00:00:00Z",
+    to: "2026-10-01T00:00:00Z",
+    status: "closed",
+  });
+
+  let meters = 0;
+  for (const s of page.items) {
+    const d = s.insights?.distance?.meters;
+    if (typeof d === "number") meters += d;
+    console.log(s.from, s.status, s.segments, s.insights?.speed?.maxKph);
+  }
+  console.log(`${(meters / 1000).toFixed(1)} km this month`);
+
+  const all = await xg.telemetry.sessions.listAll(deviceId, {
+    from: "2026-09-01T00:00:00Z",
+  });
+  return all.length;
+}
 
 export async function telemetryReads() {
   const { readings, bucketSeconds, truncated } = await xg.telemetry.history(

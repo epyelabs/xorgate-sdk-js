@@ -288,6 +288,62 @@ test("replayManifest takes either a session or a range, and unwraps `replay`", a
   assert.match(byRange.stub.calls[0]!.url, /streamKey=cam0/);
 });
 
+test("replayManifest sends telemetry=0 only on the opt-out, and passes the block through untouched", async () => {
+  const telemetry = {
+    sessions: [
+      {
+        id: "t1",
+        status: "closed",
+        rateHz: 1,
+        timeSource: "rtc",
+        from: 1,
+        to: 2,
+        overview: { format: "overview.v1", url: "https://s3/overview", bytes: 23579, builtAt: 3 },
+        segments: [{ seq: 0, startTs: 1, endTs: 2, samples: 60, bytes: 5466, url: "https://s3/seg" }],
+        insights: { computed: { distance: 1 }, computedAt: 3, events: [], distance: { meters: 25181.6 } },
+      },
+    ],
+    truncated: false,
+  };
+  const manifest = { deviceId: "dev-1", from: 1, to: 2, urlExpiresAt: 3, sessions: [], telemetry };
+  const withBlock = client([{ body: { replay: manifest } }]);
+  const replay = await withBlock.xg.media.replayManifest("dev-1", { sessionId: "s1" });
+  assert.doesNotMatch(withBlock.stub.calls[0]!.url, /telemetry=/);
+  assert.deepEqual(replay.telemetry, telemetry);
+  assert.equal(replay.telemetry?.sessions[0]!.insights?.distance?.meters, 25181.6);
+
+  const optOut = client([{ body: { replay: { ...manifest, telemetry: undefined } } }]);
+  const bare = await optOut.xg.media.replayManifest("dev-1", {
+    from: "2026-08-09T14:20:00Z",
+    to: "2026-08-09T14:35:00Z",
+    telemetry: false,
+  });
+  assert.match(optOut.stub.calls[0]!.url, /telemetry=0/);
+  // An old server (or the opt-out) leaves the field absent, never null.
+  assert.equal(bare.telemetry, undefined);
+});
+
+test("telemetry.sessions.list hits /telemetry/sessions, sends overlap bounds as ISO, and unwraps the page", async () => {
+  const { xg, stub } = client([
+    {
+      body: {
+        sessions: [{ id: "t1", deviceId: "dev-1", status: "closed", segments: 52, insights: null }],
+        page: { limit: 25, offset: 0, order: "desc", total: 1 },
+      },
+    },
+  ]);
+  const page = await xg.telemetry.sessions.list("dev-1", {
+    from: new Date("2026-09-01T00:00:00.000Z"),
+    to: "2026-10-01T00:00:00Z",
+    status: "closed",
+  });
+  assert.match(stub.calls[0]!.url, /\/devices\/dev-1\/telemetry\/sessions\?/);
+  assert.match(stub.calls[0]!.url, /from=2026-09-01T00%3A00%3A00\.000Z/);
+  assert.match(stub.calls[0]!.url, /status=closed/);
+  assert.equal(page.items[0]!.segments, 52);
+  assert.equal(page.page.total, 1);
+});
+
 test("telemetry metric lists are sent comma-separated, and latestByMetric rekeys", async () => {
   const { xg } = client([
     {

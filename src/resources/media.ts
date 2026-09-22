@@ -151,6 +151,11 @@ export class MediaResource {
    * Every timestamp in the result is epoch MILLISECONDS, unlike the rest of the
    * API. The SDK does not convert them, because converting would break the
    * arithmetic every replay player does.
+   *
+   * Since API 0.9.0 the result also carries `telemetry`: the recorded
+   * telemetry sessions overlapping the window, as presigned artifacts. It is
+   * OPTIONAL on the type because an older server never sends it; pass
+   * `telemetry: false` to leave it out on purpose.
    */
   async replayManifest(
     deviceId: string,
@@ -186,7 +191,10 @@ function sessionQuery(
 function replayQuery(
   params: ReplayManifestParams,
 ): Record<string, string | undefined> {
-  if (params.sessionId !== undefined) return { sessionId: params.sessionId };
+  // Only the opt-out goes on the wire: an older server would otherwise see an
+  // unknown parameter it ignores anyway, and the default is "included".
+  const telemetry = params.telemetry === false ? "0" : undefined;
+  if (params.sessionId !== undefined) return { sessionId: params.sessionId, telemetry };
   if (params.from === undefined || params.to === undefined) {
     throw new XorgateError({
       code: "INVALID_INPUT",
@@ -199,5 +207,6 @@ function replayQuery(
     from: isoOrUndefined(params.from),
     to: isoOrUndefined(params.to),
     streamKey: params.streamKey,
+    telemetry,
   };
 }
