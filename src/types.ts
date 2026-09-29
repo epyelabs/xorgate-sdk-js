@@ -1528,3 +1528,385 @@ export interface ListTransferOffersParams {
   status?: TransferOfferStatus;
   signal?: AbortSignal;
 }
+
+// ---------------------------------------------------------------------------
+// Webhooks
+// ---------------------------------------------------------------------------
+
+/**
+ * Every event type in the v1 catalog. Device types are routed per device
+ * (`devices.webhooks.set()`), `workflow.event` by the emitting `output.event`
+ * node's `webhook` field, and `ping` by `webhooks.test()`.
+ */
+export type WebhookEventType =
+  | DeviceWebhookEventType
+  | "workflow.event"
+  | "ping";
+
+/** The seven presence and session types a device route may carry. */
+export type DeviceWebhookEventType =
+  | "device.online"
+  | "device.offline"
+  | "media_session.started"
+  | "media_session.ended"
+  | "telemetry_session.started"
+  | "telemetry_session.ended"
+  | "telemetry_session.completed";
+
+/**
+ * A registered receiver. The signing secret is never part of it: it is
+ * returned exactly once, by `webhooks.create()` and `webhooks.rotateSecret()`.
+ */
+export interface WebhookEndpoint {
+  id: string;
+  organizationId: string;
+  /**
+   * The handle a workflow template's `output.event` node names in its
+   * `webhook` field. Unique within the organization;
+   * `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`.
+   */
+  name: string;
+  /** `https://` only; never `localhost` or a literal private address. */
+  url: string;
+  description: string | null;
+  /** Bumped by each rotation. */
+  secretVersion: number;
+  enabled: boolean;
+  disabledAt: string | null;
+  /** `manual`, `gone` (the receiver answered 410), or a reason added later. */
+  disabledReason: string | null;
+  /** Exhausted deliveries in a row. */
+  consecutiveFailures: number;
+  lastDeliveryAt: string | null;
+  lastSuccessAt: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Delivery counts by status over the last `windowHours` (24). */
+export interface WebhookDeliveryStats {
+  windowHours: number;
+  pending: number;
+  delivered: number;
+  failed: number;
+  exhausted: number;
+}
+
+/** `webhooks.get()` adds the 24 h delivery counts. */
+export interface WebhookEndpointDetail extends WebhookEndpoint {
+  deliveryStats: WebhookDeliveryStats;
+}
+
+export interface CreateWebhookInput {
+  name: string;
+  url: string;
+  description?: string | null;
+}
+
+/** Any subset. `enabled: false` records `disabledReason: "manual"`. */
+export interface UpdateWebhookInput {
+  name?: string;
+  url?: string;
+  description?: string | null;
+  /** Re-enabling clears `disabledAt`/`disabledReason` and resets `consecutiveFailures`. */
+  enabled?: boolean;
+}
+
+export interface CreatedWebhookEndpoint {
+  webhook: WebhookEndpoint;
+  /**
+   * Shown exactly once: `whsec_` + base64 of 32 random bytes. Store it with
+   * your other secrets in the same function that creates the endpoint, and
+   * never log the return value whole.
+   */
+  secret: string;
+}
+
+export interface RotatedWebhookSecret {
+  webhook: WebhookEndpoint;
+  /** The new secret, shown exactly once. */
+  secret: string;
+  /** Deliveries carry both signatures for this long (24). */
+  previousSecretValidForHours: number;
+}
+
+export interface WebhookTestResult {
+  /** The `ping` event's id (also its `webhook-id`). */
+  eventId: string;
+  /** False when the deployment records events but has delivery switched off. */
+  dispatched: boolean;
+}
+
+export type WebhookDeliveryStatus = "pending" | "delivered" | "failed" | "exhausted";
+
+export interface WebhookDelivery {
+  /** Also sent as the `x-xorgate-delivery` header. */
+  id: string;
+  /** The envelope `id` and the `webhook-id` header. */
+  eventId: string;
+  /**
+   * Present on `deliveries.list()` rows and on `deliveries.get()` (filled from
+   * the event there). Absent on the row `deliveries.redeliver()` returns.
+   */
+  eventType?: WebhookEventType;
+  endpointId: string;
+  /** Set on a manual redelivery: the delivery it repeats. */
+  redeliveryOf: string | null;
+  status: WebhookDeliveryStatus;
+  /** Attempts made so far (at most 8). */
+  attempt: number;
+  /** The next attempt's due time, or the lease of one in flight. */
+  nextAttemptAt: string | null;
+  responseStatus: number | null;
+  responseMs: number | null;
+  /** Timeout, network error or `redirect not followed`. */
+  error: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `deliveries.get()`: the first 1 KB of the response and the envelope that was sent. */
+export interface WebhookDeliveryDetail extends WebhookDelivery {
+  responseExcerpt: string | null;
+  event: WebhookEvent | null;
+}
+
+export interface WebhookRedelivery {
+  /** A NEW delivery (same `webhook-id`), `redeliveryOf` pointing at the original. */
+  delivery: WebhookDelivery;
+  enqueued: boolean;
+}
+
+export interface ListWebhooksParams extends ListParams {
+  sort?: "createdAt" | "name";
+  signal?: AbortSignal;
+}
+
+export interface ListWebhookDeliveriesParams extends ListParams {
+  status?: WebhookDeliveryStatus;
+  signal?: AbortSignal;
+}
+
+export interface WebhookEventTypeInfo {
+  type: WebhookEventType;
+  routing: "device" | "node" | "endpoint";
+  description: string;
+  /** A sample `data` for this type. */
+  sample: Record<string, unknown>;
+}
+
+export interface WebhookEventCatalog {
+  /** The envelope `apiVersion` the server emits. */
+  apiVersion: string;
+  eventTypes: WebhookEventTypeInfo[];
+}
+
+/** One route of a device, as `devices.webhooks.get()` returns it. */
+export interface DeviceWebhookRoute {
+  endpointId: string;
+  endpointName: string;
+  eventTypes: DeviceWebhookEventType[];
+}
+
+/** One route as `devices.webhooks.set()` takes it. Each endpoint at most once. */
+export interface WebhookRouteInput {
+  endpointId: string;
+  /** Non-empty. */
+  eventTypes: readonly DeviceWebhookEventType[];
+}
+
+/** Alias of {@link DeviceWebhookRoute}. */
+export type WebhookRoute = DeviceWebhookRoute;
+
+// ---- webhook events (the delivered envelope) --------------------------------
+
+/**
+ * The JSON body of every delivery. `id` is a plain UUIDv7 string (no prefix),
+ * identical to the `webhook-id` header: delivery is at-least-once, so dedupe
+ * on it.
+ */
+export interface WebhookEnvelope<T extends WebhookEventType, D> {
+  id: string;
+  type: T;
+  /** `data` shapes are versioned through this (`2026-09-27` for v1). */
+  apiVersion: string;
+  /** When xorgate detected the event (server clock), ISO-8601. */
+  createdAt: string;
+  organizationId: string;
+  /** Null only for `ping`. */
+  workspaceId: string | null;
+  data: D;
+}
+
+interface DevicePresenceDataBase {
+  deviceId: string;
+  serial: string;
+  name: string | null;
+  previousStatus: DeviceStatus;
+  lastSeenAt: string | null;
+}
+
+export interface DeviceOnlineData extends DevicePresenceDataBase {
+  status: "online";
+  /** `connect`: MQTT connect message. `telemetry`: first telemetry after being offline. */
+  source: "connect" | "telemetry";
+}
+
+export interface DeviceOfflineData extends DevicePresenceDataBase {
+  status: "offline";
+  /**
+   * `graceful`: the agent said goodbye (~1 s). `lwt`: the MQTT last will
+   * (~1 s when the process died with its network up, ~90 s when the device
+   * went silent). `sweeper`: telemetry went stale.
+   */
+  source: "graceful" | "lwt" | "sweeper";
+}
+
+/** "First data arrived", not "recording began". */
+export interface MediaSessionStartedData {
+  sessionId: string;
+  deviceId: string;
+  streamKey: StreamKey;
+  /** Device clock; see `timeSource`. */
+  startedAt: string;
+  timeSource?: TimeSource | null;
+  codec?: string | null;
+  width?: number | null;
+  height?: number | null;
+  fps?: number | null;
+  firstSeq?: number | null;
+}
+
+interface SessionEndedDataBase {
+  sessionId: string;
+  deviceId: string;
+  startedAt: string;
+  endedAt: string;
+  lastSegmentAt: string;
+  segmentCount: number;
+  /**
+   * True when a straggler segment reopened an already-ended session and this
+   * is its second (or later) end. Dedupe on the envelope `id`, not the session.
+   */
+  reopened: boolean;
+}
+
+export interface MediaSessionEndedData extends SessionEndedDataBase {
+  streamKey: StreamKey;
+  totalBytes?: number | null;
+  totalDurationMs?: number | null;
+}
+
+export interface TelemetrySessionStartedData {
+  sessionId: string;
+  deviceId: string;
+  startedAt: string;
+  rateHz?: number | null;
+  timeSource?: TimeSource | null;
+}
+
+/** The overview and insights may not be built yet; wait for `completed`. */
+export interface TelemetrySessionEndedData extends SessionEndedDataBase {
+  sampleCount?: number | null;
+  byteCount?: number | null;
+}
+
+export interface TelemetrySessionCompletedData extends TelemetrySessionEndedData {
+  insights: TelemetryInsights | null;
+  distanceM?: number | null;
+  durationMs?: number | null;
+  maxSpeedKph?: number | null;
+  /** A stable API path (no presigned URL: those expire). */
+  overview: { apiPath: string };
+}
+
+export interface WorkflowEventRun {
+  id: string;
+  templateId: string;
+  templateVersion: number;
+  trigger: string;
+  triggerContext: unknown;
+  deviceId: string | null;
+}
+
+export interface WorkflowEventData {
+  /** The workflow event's own id (not the envelope id). */
+  eventId: string;
+  /** The emitting `output.event` node. */
+  nodeId: string;
+  /** The endpoint name the node's `webhook` field carries. */
+  webhook: string;
+  kind: string;
+  occurredAt: string;
+  confidence: number;
+  payloadSummary: string;
+  /** Producer-defined; not a stable shape. */
+  payload: unknown;
+  run: WorkflowEventRun;
+  /**
+   * Set when the organization has no endpoint of that name. Such an event is
+   * recorded but never delivered, so a receiver does not normally see it.
+   */
+  unrouted?: "endpoint_not_found";
+}
+
+export interface WebhookPingData {
+  message: string;
+}
+
+export type DeviceOnlineEvent = WebhookEnvelope<"device.online", DeviceOnlineData>;
+export type DeviceOfflineEvent = WebhookEnvelope<"device.offline", DeviceOfflineData>;
+export type MediaSessionStartedEvent = WebhookEnvelope<"media_session.started", MediaSessionStartedData>;
+export type MediaSessionEndedEvent = WebhookEnvelope<"media_session.ended", MediaSessionEndedData>;
+export type TelemetrySessionStartedEvent = WebhookEnvelope<"telemetry_session.started", TelemetrySessionStartedData>;
+export type TelemetrySessionEndedEvent = WebhookEnvelope<"telemetry_session.ended", TelemetrySessionEndedData>;
+export type TelemetrySessionCompletedEvent = WebhookEnvelope<"telemetry_session.completed", TelemetrySessionCompletedData>;
+export type WorkflowEventWebhookEvent = WebhookEnvelope<"workflow.event", WorkflowEventData>;
+export type WebhookPingEvent = WebhookEnvelope<"ping", WebhookPingData>;
+
+/**
+ * Every delivered event, discriminated on `type`:
+ *
+ * ```ts
+ * if (event.type === "device.offline") event.data.source // "graceful" | "lwt" | "sweeper"
+ * ```
+ */
+export type WebhookEvent =
+  | DeviceOnlineEvent
+  | DeviceOfflineEvent
+  | MediaSessionStartedEvent
+  | MediaSessionEndedEvent
+  | TelemetrySessionStartedEvent
+  | TelemetrySessionEndedEvent
+  | TelemetrySessionCompletedEvent
+  | WorkflowEventWebhookEvent
+  | WebhookPingEvent;
+
+/** The event type for one `type`: `WebhookEventOf<"device.online">`. */
+export type WebhookEventOf<T extends WebhookEventType> = Extract<WebhookEvent, { type: T }>;
+
+export interface VerifyWebhookSignatureInput {
+  /**
+   * The request headers: a `Headers` instance or a plain object (Node's
+   * `req.headers`), matched case-insensitively.
+   */
+  headers: WebhookHeadersLike;
+  /**
+   * The body EXACTLY as received, before any JSON parsing: a string or bytes
+   * (`Buffer` is a `Uint8Array`). Re-serializing a parsed body breaks the
+   * signature.
+   */
+  rawBody: string | Uint8Array | ArrayBuffer;
+  /** The endpoint's secret, `whsec_...` (the prefix is optional). */
+  secret: string;
+  /** Allowed clock skew in either direction, in seconds. Default 300. */
+  toleranceSeconds?: number;
+  /** The current time, for tests and replay tooling. Default: the system clock. */
+  now?: Date;
+}
+
+export type WebhookHeadersLike =
+  | { get(name: string): string | null }
+  | Record<string, string | readonly string[] | undefined>;

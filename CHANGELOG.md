@@ -3,6 +3,62 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.9.0
+
+Webhooks (API 0.10.0). Purely additive.
+
+### Added
+
+- **`xg.webhooks`**, the organization's endpoint registry: `list(params)`
+  (paginated, `sort: "createdAt" | "name"`), `iterate()`, `listAll()`,
+  `create({ name, url, description? })` returning `{ webhook, secret }`,
+  `get(id)` (with `deliveryStats` for the last 24 h, missing statuses filled
+  with 0), `update(id, { name?, url?, description?, enabled? })`,
+  `delete(id)`, `test(id)` returning `{ eventId, dispatched }`,
+  `rotateSecret(id)` returning `{ webhook, secret, previousSecretValidForHours }`,
+  and `eventTypes()` returning `{ apiVersion, eventTypes }`. The secret is
+  returned exactly once and the client keeps no copy of it.
+- **`xg.webhooks.deliveries`**: `list(endpointId, { status, limit, offset, order })`
+  (paginated), `iterate()`, `listAll()`, `get(endpointId, deliveryId)` (with
+  `responseExcerpt` and the `event` envelope that was sent; `eventType` is
+  filled from the event) and `redeliver(endpointId, deliveryId)` returning
+  `{ delivery, enqueued }`.
+- **`xg.devices.webhooks`**: `get(deviceId)` and `set(deviceId, routes)`, the
+  per-device routes for presence and session events. `set()` replaces the
+  whole set; `[]` clears it.
+- **`verifyWebhookSignature({ headers, rawBody, secret, toleranceSeconds?, now? })`**,
+  exported from the package root. Standard Webhooks verification with no
+  dependency (WebCrypto HMAC-SHA256, constant-time compare, any of several
+  `v1,` signatures, timestamp tolerance of 300 s in both directions). **Async:**
+  it returns `Promise<WebhookEvent>`. `headers` may be a `Headers` instance or
+  a plain object (case-insensitive); `rawBody` a string, `Uint8Array`/`Buffer`
+  or `ArrayBuffer`. Pinned against the shared vector the engine and the
+  platform sign with, and tested against the `standardwebhooks` reference
+  library (a devDependency only).
+- **`WebhookVerificationError`**, a `XorgateError` with the new client code
+  `WEBHOOK_VERIFICATION_FAILED` and a `reason` (`WebhookVerificationFailure`).
+- Constants `WEBHOOK_EVENT_TYPES` and `DEVICE_WEBHOOK_EVENT_TYPES`.
+- Types: `WebhookEndpoint`, `WebhookEndpointDetail`, `WebhookDeliveryStats`,
+  `CreateWebhookInput`, `UpdateWebhookInput`, `CreatedWebhookEndpoint`,
+  `RotatedWebhookSecret`, `WebhookTestResult`, `WebhookDelivery`,
+  `WebhookDeliveryDetail`, `WebhookDeliveryStatus`, `WebhookRedelivery`,
+  `ListWebhooksParams`, `ListWebhookDeliveriesParams`, `WebhookEventTypeInfo`,
+  `WebhookEventCatalog`, `DeviceWebhookRoute` (alias `WebhookRoute`),
+  `WebhookRouteInput`, `WebhookEventType`, `DeviceWebhookEventType`,
+  `WebhookEnvelope`, `WebhookEvent` (discriminated on `type`),
+  `WebhookEventOf<T>`, one event type per catalog entry (`DeviceOnlineEvent`,
+  `DeviceOfflineEvent`, `MediaSessionStartedEvent`, `MediaSessionEndedEvent`,
+  `TelemetrySessionStartedEvent`, `TelemetrySessionEndedEvent`,
+  `TelemetrySessionCompletedEvent`, `WorkflowEventWebhookEvent`,
+  `WebhookPingEvent`) and their `data` types (`DeviceOnlineData`,
+  `DeviceOfflineData`, `MediaSessionStartedData`, `MediaSessionEndedData`,
+  `TelemetrySessionStartedData`, `TelemetrySessionEndedData`,
+  `TelemetrySessionCompletedData`, `WorkflowEventData`, `WorkflowEventRun`,
+  `WebhookPingData`), `VerifyWebhookSignatureInput`, `WebhookHeadersLike`.
+  The envelope `id` is a plain UUIDv7 string, equal to the `webhook-id`
+  header. Session `data` fields the platform may not always know (codec,
+  sizes, counters) are optional.
+
 ## 0.8.0
 
 Recorded telemetry as session artifacts (API 0.9.0). Purely additive: an older

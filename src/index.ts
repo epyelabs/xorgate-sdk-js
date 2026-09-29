@@ -45,6 +45,15 @@ export type { MediaResource } from "./resources/media.js";
 export type { TelemetryResource } from "./resources/telemetry.js";
 export type { WorkflowTemplatesResource } from "./resources/workflow-templates.js";
 export type { TransferOffersResource } from "./resources/transfer-offers.js";
+export type { WebhooksResource } from "./resources/webhooks.js";
+
+export {
+  verifyWebhookSignature,
+  WebhookVerificationError,
+  WEBHOOK_EVENT_TYPES,
+  DEVICE_WEBHOOK_EVENT_TYPES,
+} from "./webhooks/verify.js";
+export type { WebhookVerificationFailure } from "./webhooks/verify.js";
 
 export { CONFIG_NAMESPACES } from "./generated/config.js";
 

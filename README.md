@@ -43,7 +43,7 @@ silently drop the version.
 
 - **One client, resource modules.** `xg.devices`, `xg.workspaces`,
   `xg.telemetry`, `xg.media`, `xg.apiKeys`, `xg.workflowTemplates`,
-  `xg.transferOffers`, and so on, mirroring the API.
+  `xg.transferOffers`, `xg.webhooks`, and so on, mirroring the API.
 - **Tenancy is configuration, not per-call boilerplate.** `organizationId` is
   required at construction and travels on every request.
 - **One error type.** Everything thrown is a `XorgateError` carrying
@@ -193,6 +193,120 @@ Tags are normalized platform-side (lowercase, deduplicated, at most 20 of at
 most 32 characters each, `^[a-z0-9][a-z0-9._-]*$`), so `"Geofence"` matches
 `geofence` and a value that could never be a tag is a `400` rather than an empty
 result. Tags are SET in the web editor; this package reads them.
+
+## Webhooks
+
+xorgate POSTs signed JSON to your HTTPS endpoint when a device comes online or
+goes offline, when a media or telemetry session starts, ends or completes, and
+when a workflow's `output.event` node fires in a production run. Delivery is
+at-least-once with retries (8 attempts over about 44 hours); dedupe on the
+event `id`.
+
+### Endpoints
+
+Endpoints are organization resources: any role reads, owner or admin writes.
+
+```ts
+const { webhook, secret } = await xg.webhooks.create({
+  name: "dispatch", // what a workflow node's `webhook` field names
+  url: "https://example.com/hooks/xorgate",
+})
+// `secret` (whsec_...) is shown exactly once. Store it now; the SDK keeps no
+// copy. Lost it? rotateSecret() issues a new one.
+
+await xg.webhooks.test(webhook.id) // sends a `ping`, one attempt
+const page = await xg.webhooks.deliveries.list(webhook.id, { status: "failed" })
+const detail = await xg.webhooks.deliveries.get(webhook.id, page.items[0]!.id)
+console.log(detail.responseStatus, detail.responseExcerpt, detail.event?.type)
+await xg.webhooks.deliveries.redeliver(webhook.id, detail.id)
+
+const { secret: next } = await xg.webhooks.rotateSecret(webhook.id)
+// For 24 h deliveries carry two signatures (old and new), so switch at your pace.
+```
+
+Also `list()` / `iterate()` / `listAll()`, `get()` (with 24 h `deliveryStats`),
+`update()` (`name`, `url`, `description`, `enabled`), `delete()`,
+`deliveries.iterate()` / `deliveries.listAll()` and `eventTypes()` (the catalog
+with a sample `data` per type). `test()` and `redeliver()` on a disabled
+endpoint are `409 CONFLICT`.
+
+### Routing
+
+An endpoint receives nothing until something routes to it.
+
+- **Device events** (`device.online`, `device.offline`, `media_session.*`,
+  `telemetry_session.*`) are routed per device. `set()` REPLACES the whole set:
+
+  ```ts
+  await xg.devices.webhooks.set(deviceId, [
+    { endpointId: webhook.id, eventTypes: ["device.offline", "telemetry_session.completed"] },
+  ])
+  const routes = await xg.devices.webhooks.get(deviceId) // [{ endpointId, endpointName, eventTypes }]
+  ```
+
+  To add one route, `get()` first and send the union. `DEVICE_WEBHOOK_EVENT_TYPES`
+  lists the seven routable types.
+- **`workflow.event`** is routed by the emitting `output.event` node's `webhook`
+  field, which names an endpoint. It is set in the template, not here.
+
+### Verifying signatures
+
+Deliveries follow [Standard Webhooks](https://www.standardwebhooks.com):
+`webhook-id`, `webhook-timestamp` and `webhook-signature` headers.
+`verifyWebhookSignature()` checks them with no dependency (WebCrypto), so it
+runs on Node 20+, edge runtimes and Deno/Bun. **It is async; `await` it.** It
+returns the parsed event, typed as a union discriminated on `type`, and throws
+`WebhookVerificationError` (a `XorgateError`, code
+`WEBHOOK_VERIFICATION_FAILED`, with a `reason`) on any failure.
+
+Verify the body **exactly as received**. Parsing and re-serializing JSON changes
+the bytes, so take the raw body. With Express:
+
+```ts
+import express from "express"
+import { verifyWebhookSignature, WebhookVerificationError } from "@xorgate/sdk"
+
+const app = express()
+
+// express.raw, on this route only, so req.body is the untouched Buffer.
+app.post("/hooks/xorgate", express.raw({ type: "application/json" }), async (req, res) => {
+  let event
+  try {
+    event = await verifyWebhookSignature({
+      headers: req.headers,
+      rawBody: req.body,
+      secret: process.env.XORGATE_WEBHOOK_SECRET!,
+    })
+  } catch (e) {
+    if (e instanceof WebhookVerificationError) return res.status(400).end()
+    throw e
+  }
+
+  // Ack fast (within 10 s), then work. Dedupe on event.id: delivery is at-least-once.
+  res.status(204).end()
+
+  switch (event.type) {
+    case "device.offline":
+      console.log(event.data.deviceId, event.data.source) // "graceful" | "lwt" | "sweeper"
+      break
+    case "telemetry_session.completed":
+      console.log(event.data.sessionId, event.data.distanceM, event.data.overview.apiPath)
+      break
+    case "workflow.event":
+      console.log(event.data.kind, event.data.nodeId, event.data.run.templateId)
+      break
+  }
+})
+```
+
+With a Fetch-style handler (Next.js route handlers, Workers, Hono) pass
+`request.headers` and `await request.text()`. Options: `toleranceSeconds`
+(default 300, applied in both directions) and `now` (a `Date`, for tests).
+`reason` is one of `missing_headers`, `invalid_timestamp`, `timestamp_too_old`,
+`timestamp_too_new`, `invalid_secret`, `invalid_body` (you passed a parsed
+object), `no_matching_signature`, `invalid_payload` or `crypto_unavailable`.
+Any `v1` signature in the header may match, which is what makes rotation
+seamless. The error never carries the secret, the body or a signature.
 
 ## Errors
 

@@ -63,7 +63,12 @@ export type XorgateClientErrorCode =
    * Raised by `@xorgate/react`, which is where a stale live scope is visible;
    * declared here so both packages name the condition identically.
    */
-  | "DEVICE_OUT_OF_SCOPE";
+  | "DEVICE_OUT_OF_SCOPE"
+  /**
+   * `verifyWebhookSignature()` rejected a delivery. Thrown as a
+   * `WebhookVerificationError`, whose `reason` says why.
+   */
+  | "WEBHOOK_VERIFICATION_FAILED";
 
 export type XorgateErrorCode = XorgateApiErrorCode | XorgateClientErrorCode;
 

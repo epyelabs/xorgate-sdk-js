@@ -14,6 +14,7 @@ import type {
   DeviceIdentity,
   DeviceProvisioning,
   DeviceUiPrefsPatch,
+  DeviceWebhookRoute,
   IterateOptions,
   ListDevicesParams,
   Page,
@@ -22,14 +23,68 @@ import type {
   TransferResult,
   UpdateDeviceInput,
   VideoChannel,
+  WebhookRouteInput,
 } from "../types.js";
 import type { Tenancy } from "./tenancy.js";
 
-export class DevicesResource {
+/**
+ * `xg.devices.webhooks`: which webhook endpoints receive which of a device's
+ * presence and session events. Cloud-side routing only; nothing is sent to the
+ * device. Workspace-scoped like the device (a workspace-scoped session token
+ * may manage its own workspace's devices, which is how an integration wires a
+ * device at pairing time). Owner/admin/member read, owner/admin write.
+ */
+class DeviceWebhooksResource {
   constructor(
     private readonly http: HttpCore,
     private readonly tenancy: Tenancy,
   ) {}
+
+  /** The device's routes, ordered by endpoint name. */
+  async get(deviceId: string): Promise<DeviceWebhookRoute[]> {
+    const body = await this.http.request(
+      "GET",
+      `/devices/${encodeURIComponent(deviceId)}/webhooks`,
+      {},
+      this.tenancy,
+    );
+    return unwrapList<DeviceWebhookRoute>(body, "routes");
+  }
+
+  /**
+   * REPLACES the whole set and returns the new one; `[]` removes every route.
+   * Each endpoint at most once, with a non-empty subset of the seven device
+   * event types (at most 20 routes). Applies to events from then on, no
+   * backfill. To add one route, read with `get()` first and send the union.
+   */
+  async set(
+    deviceId: string,
+    routes: readonly WebhookRouteInput[],
+  ): Promise<DeviceWebhookRoute[]> {
+    const body = await this.http.request(
+      "PUT",
+      `/devices/${encodeURIComponent(deviceId)}/webhooks`,
+      {
+        body: {
+          routes: routes.map((r) => ({ endpointId: r.endpointId, eventTypes: [...r.eventTypes] })),
+        },
+      },
+      this.tenancy,
+    );
+    return unwrapList<DeviceWebhookRoute>(body, "routes");
+  }
+}
+
+export class DevicesResource {
+  /** Per-device webhook routes. See {@link DeviceWebhooksResource}. */
+  readonly webhooks: DeviceWebhooksResource;
+
+  constructor(
+    private readonly http: HttpCore,
+    private readonly tenancy: Tenancy,
+  ) {
+    this.webhooks = new DeviceWebhooksResource(http, tenancy);
+  }
 
   /**
    * PAGINATED. An out-of-organization `workspaceId` yields an EMPTY page, not
