@@ -1854,6 +1854,9 @@ export interface WorkflowEventData {
 
 export interface WebhookPingData {
   message: string;
+  /** The endpoint the ping was sent to (`webhooks.test()`). */
+  endpointId?: string;
+  endpointName?: string;
 }
 
 export type DeviceOnlineEvent = WebhookEnvelope<"device.online", DeviceOnlineData>;
