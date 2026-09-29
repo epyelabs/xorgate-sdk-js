@@ -1239,3 +1239,64 @@ export async function catchTransferFailures() {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// resources/devices.mdx — purges
+// ---------------------------------------------------------------------------
+
+/**
+ * Wipe a device's history while keeping the device enrolled. Owner/admin.
+ * Preview first for the confirmation dialog, create, then poll: the API
+ * answers 202 and a worker does the deleting.
+ */
+export async function purgeDeviceHistory() {
+  const preview = await xg.devices.purges.preview(deviceId);
+  console.log(
+    `${preview.workflows.attachments} workflows, ${preview.workflows.runs} runs, ` +
+      `${preview.telemetry.sessions} telemetry sessions ` +
+      `(readings ${preview.telemetry.readingsFrom} to ${preview.telemetry.readingsTo}), ` +
+      `${preview.media.sessions} video sessions`,
+  );
+
+  let purge = await xg.devices.purges.create(deviceId, {
+    scopes: ["workflows", "telemetry", "media"],
+  });
+
+  while (purge.status === "queued" || purge.status === "running") {
+    await new Promise((r) => setTimeout(r, 2_500));
+    purge = await xg.devices.purges.get(deviceId, purge.id);
+  }
+
+  if (purge.status === "failed") throw new Error(`purge failed: ${purge.error}`);
+  console.log(purge.counts.runs, purge.counts.readings, purge.counts.mediaSessions);
+}
+
+export async function catchPurgeFailures() {
+  try {
+    await xg.devices.purges.create(deviceId, { scopes: ["telemetry"] });
+  } catch (e) {
+    if (!isXorgateError(e)) throw e;
+    switch (e.code) {
+      case "PURGE_IN_PROGRESS":
+        // `e.details.purgeId` names the one still running; poll it instead.
+        break;
+      case "TRANSFER_PENDING":
+        // Cancel or resolve the transfer offer first.
+        break;
+      case "PURGE_DISPATCH_FAILED":
+        // Recorded but never queued. Nothing was deleted. Safe to retry.
+        break;
+      case "WORKSPACE_SCOPED":
+        // A workspace-scoped session token cannot purge; use an org-wide credential.
+        break;
+      default:
+        throw e;
+    }
+  }
+}
+
+/** The audit trail: who purged what, and when. Newest first, at most 20. */
+export async function lastPurge() {
+  const [latest] = await xg.devices.purges.list(deviceId, { limit: 1 });
+  if (latest) console.log(latest.status, latest.scopes, latest.requestedBy, latest.finishedAt);
+}

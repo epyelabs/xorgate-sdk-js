@@ -13,9 +13,13 @@ import type {
   DeviceConfigView,
   DeviceIdentity,
   DeviceProvisioning,
+  DevicePurge,
+  DevicePurgeCreateParams,
+  DevicePurgePreview,
   DeviceUiPrefsPatch,
   DeviceWebhookRoute,
   IterateOptions,
+  ListDevicePurgesParams,
   ListDevicesParams,
   Page,
   TransferDeviceInput,
@@ -75,15 +79,122 @@ class DeviceWebhooksResource {
   }
 }
 
+/**
+ * `xg.devices.purges`: wipe the history a device has accumulated while keeping
+ * the device itself. Owner/admin only. The companion of a transfer, which
+ * moves every reading and every recorded second with the device and purges
+ * nothing.
+ *
+ * What goes is chosen per scope ({@link DevicePurgeScope}): attached workflows
+ * and their production runs, recorded telemetry and every stored reading,
+ * recorded video. Everything older than the moment of the request (`cutoff`)
+ * is removed and what the device uploads afterwards stays, so a recording in
+ * progress is cut at that point: stop recording first. The device row, its
+ * IoT identity and certificate, live video channels, settings, webhook routes
+ * and the latest-value cache are never touched, and the agent keeps running.
+ *
+ * The work is asynchronous. `create()` returns `202` with the purge row and
+ * a worker does the deleting in resumable chunks; poll `get()` every few
+ * seconds until `status` is `succeeded` or `failed`. One purge per device at
+ * a time. There is no undo.
+ */
+class DevicePurgesResource {
+  constructor(
+    private readonly http: HttpCore,
+    private readonly tenancy: Tenancy,
+  ) {}
+
+  /**
+   * What a purge would remove, as of now, for a confirmation dialog. Writes
+   * nothing. Stored readings come back as a time span (`readingsFrom` /
+   * `readingsTo`), not a count: counting them is the expensive part of the
+   * purge itself.
+   */
+  async preview(deviceId: string): Promise<DevicePurgePreview> {
+    return await this.http.request<DevicePurgePreview>(
+      "GET",
+      `/devices/${encodeURIComponent(deviceId)}/purges/preview`,
+      {},
+      this.tenancy,
+    );
+  }
+
+  /**
+   * Queue a purge. Returns the row in `status: "queued"` (`counts` is `{}`
+   * until the worker starts); the API answered `202`, nothing has been deleted
+   * yet.
+   *
+   * Organization-wide, like a transfer: a workspace-scoped session token is
+   * refused with `403 WORKSPACE_SCOPED` whatever its role. `409
+   * PURGE_IN_PROGRESS` when a purge of this device is already queued or
+   * running (`details.purgeId` names it); `409 TRANSFER_PENDING` while a
+   * cross-organization transfer offer for the device is open, because the
+   * handover detaches attachments itself; `400` on an empty or unknown scope;
+   * `502 PURGE_DISPATCH_FAILED` when the row was recorded but could not be
+   * queued, which deleted nothing and is safe to retry.
+   *
+   * A `running` purge whose worker died (`stalled: true`) does not block: this
+   * call closes it as `failed` and starts over.
+   */
+  async create(deviceId: string, params: DevicePurgeCreateParams): Promise<DevicePurge> {
+    const body = await this.http.request(
+      "POST",
+      `/devices/${encodeURIComponent(deviceId)}/purges`,
+      {
+        body: { scopes: [...params.scopes] },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return unwrap<DevicePurge>(body, "purge");
+  }
+
+  /**
+   * The device's purge history, newest first: the audit record and the way to
+   * find a purge that is still running. NOT paginated: `limit` is 1 to 20
+   * (default 10) and there is no offset.
+   */
+  async list(deviceId: string, params: ListDevicePurgesParams = {}): Promise<DevicePurge[]> {
+    const body = await this.http.request(
+      "GET",
+      `/devices/${encodeURIComponent(deviceId)}/purges`,
+      {
+        query: { limit: params.limit },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
+    );
+    return unwrapList<DevicePurge>(body, "purges");
+  }
+
+  /**
+   * One purge: its `status`, what it has removed so far (`counts`) and where
+   * it is (`cursor.step`). Poll every few seconds while `status` is `queued`
+   * or `running`. A purge of another device is a `404`.
+   */
+  async get(deviceId: string, purgeId: string): Promise<DevicePurge> {
+    const body = await this.http.request(
+      "GET",
+      `/devices/${encodeURIComponent(deviceId)}/purges/${encodeURIComponent(purgeId)}`,
+      {},
+      this.tenancy,
+    );
+    return unwrap<DevicePurge>(body, "purge");
+  }
+}
+
 export class DevicesResource {
   /** Per-device webhook routes. See {@link DeviceWebhooksResource}. */
   readonly webhooks: DeviceWebhooksResource;
+  /** Purge a device's history without deleting the device. See {@link DevicePurgesResource}. */
+  readonly purges: DevicePurgesResource;
 
   constructor(
     private readonly http: HttpCore,
     private readonly tenancy: Tenancy,
   ) {
     this.webhooks = new DeviceWebhooksResource(http, tenancy);
+    this.purges = new DevicePurgesResource(http, tenancy);
   }
 
   /**
@@ -156,7 +267,14 @@ export class DevicesResource {
     return normalizeDevice(unwrap(body, "device"));
   }
 
-  /** Cascades. Does NOT tear down the AWS IoT thing or certificate. */
+  /**
+   * Owner/admin. Final and thorough: cascades the rows (identity, channels,
+   * sessions, attachments, runs, webhook routes) AND tears down the AWS side
+   * (the IoT thing and certificate, the KVS signaling channels, the uploaded
+   * media and telemetry objects, the FK-less telemetry history). There is no
+   * soft delete and no restore. To wipe a device's history while keeping the
+   * device enrolled, use {@link DevicesResource.purges} instead.
+   */
   async delete(id: string): Promise<void> {
     await this.http.request(
       "DELETE",

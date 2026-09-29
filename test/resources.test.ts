@@ -425,3 +425,122 @@ test("auth.createSessionToken posts the scope and returns the flat credential", 
   assert.deepEqual(stub.calls[0]!.body, { workspaceId: "ws-1", ttlSeconds: 900 });
   assert.equal(token.live.region, "us-east-1");
 });
+
+// ---- devices.purges -------------------------------------------------------
+
+/** A purge row as `POST /devices/{id}/purges` answers (queued, worker not started). */
+function purgeRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "01a0ee8e-3d96-7873-993c-ce0b06b96ae9",
+    deviceId: "dev-1",
+    workspaceId: "ws-1",
+    organizationId: "org-1",
+    scopes: ["workflows", "telemetry", "media"],
+    status: "queued",
+    cutoff: "2026-09-29T19:04:54.000Z",
+    cursor: null,
+    counts: {},
+    error: null,
+    requestedBy: "user-1",
+    requestedAt: "2026-09-29T19:04:54.000Z",
+    startedAt: null,
+    finishedAt: null,
+    leaseUntil: null,
+    stalled: false,
+    ...overrides,
+  };
+}
+
+test("devices.purges.preview: GET /devices/{id}/purges/preview returns the flat body with tenancy", async () => {
+  const preview = {
+    workflows: { attachments: 1, runs: 2 },
+    telemetry: { sessions: 1, readingsFrom: "2026-09-26T18:04:35.743Z", readingsTo: "2026-09-29T18:04:03.743Z" },
+    media: { sessions: 1 },
+  };
+  const { xg, stub } = client([{ body: preview }]);
+  assert.deepEqual(await xg.devices.purges.preview("dev 1"), preview);
+  assert.equal(stub.calls[0]!.method, "GET");
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/devices/dev%201/purges/preview");
+  assert.equal(stub.calls[0]!.headers["x-organization-id"], "org-1");
+  assert.equal(stub.calls[0]!.body, undefined);
+});
+
+test("devices.purges.create: POST { scopes } to /devices/{id}/purges, unwraps the 202 purge", async () => {
+  const { xg, stub } = client([{ status: 202, body: { purge: purgeRow({ scopes: ["media", "telemetry"] }) } }]);
+  const purge = await xg.devices.purges.create("dev-1", { scopes: ["media", "telemetry"] });
+  assert.equal(purge.status, "queued");
+  assert.deepEqual(purge.scopes, ["media", "telemetry"]);
+  assert.deepEqual(purge.counts, {});
+  assert.equal(purge.stalled, false);
+  assert.equal(stub.calls[0]!.method, "POST");
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/devices/dev-1/purges");
+  assert.deepEqual(stub.calls[0]!.body, { scopes: ["media", "telemetry"] });
+  assert.equal(stub.calls[0]!.headers["x-organization-id"], "org-1");
+});
+
+test("devices.purges.create: a 409 PURGE_IN_PROGRESS surfaces its code and details.purgeId", async () => {
+  const { xg } = client([
+    {
+      status: 409,
+      body: {
+        error: {
+          code: "PURGE_IN_PROGRESS",
+          message: "A purge for this device is already in progress.",
+          details: { purgeId: "p-live" },
+        },
+      },
+    },
+  ]);
+  await assert.rejects(
+    xg.devices.purges.create("dev-1", { scopes: ["workflows"] }),
+    (e: unknown) =>
+      isXorgateError(e) &&
+      e.code === "PURGE_IN_PROGRESS" &&
+      e.status === 409 &&
+      e.details?.purgeId === "p-live" &&
+      e.retryable === false,
+  );
+});
+
+test("devices.purges.list: GET /devices/{id}/purges?limit=N unwraps the array, and omits limit by default", async () => {
+  const rows = [purgeRow({ id: "p-2", status: "succeeded" }), purgeRow({ id: "p-1", status: "failed", error: "abandoned" })];
+  const { xg, stub } = client([{ body: { purges: rows } }, { body: { purges: [] } }]);
+  assert.deepEqual(await xg.devices.purges.list("dev-1", { limit: 5 }), rows);
+  const first = new URL(stub.calls[0]!.url);
+  assert.equal(stub.calls[0]!.method, "GET");
+  assert.equal(first.pathname, "/v1/devices/dev-1/purges");
+  assert.equal(first.searchParams.get("limit"), "5");
+  assert.equal(stub.calls[0]!.headers["x-organization-id"], "org-1");
+
+  assert.deepEqual(await xg.devices.purges.list("dev-1"), []);
+  assert.equal(new URL(stub.calls[1]!.url).search, "");
+});
+
+test("devices.purges.get: GET /devices/{id}/purges/{purgeId} unwraps the purge with counts and cursor", async () => {
+  const done = purgeRow({
+    id: "p-1",
+    status: "succeeded",
+    cursor: { step: "done" },
+    counts: {
+      attachments: 1,
+      runs: 2,
+      runObjects: 2,
+      telemetrySessions: 1,
+      telemetryObjects: 3,
+      ingestLogRows: 2,
+      readings: 4985,
+      mediaSessions: 1,
+      mediaObjects: 0,
+    },
+    startedAt: "2026-09-29T19:04:55.000Z",
+    finishedAt: "2026-09-29T19:04:59.000Z",
+  });
+  const { xg, stub } = client([{ body: { purge: done } }]);
+  const purge = await xg.devices.purges.get("dev-1", "p/1");
+  assert.deepEqual(purge, done);
+  assert.equal(purge.cursor?.step, "done");
+  assert.equal(purge.counts.readings, 4985);
+  assert.equal(stub.calls[0]!.method, "GET");
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/devices/dev-1/purges/p%2F1");
+  assert.equal(stub.calls[0]!.headers["x-organization-id"], "org-1");
+});

@@ -3,6 +3,39 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.10.0
+
+Device data purge (API 0.10.0, `plans/device-wf-data-delete`). Purely additive.
+
+### Added
+
+- **`xg.devices.purges`**, the companion of a transfer: wipe the history a
+  device has accumulated while keeping the device enrolled. Owner/admin only,
+  organization-wide (a workspace-scoped session token is refused with
+  `WORKSPACE_SCOPED`). `preview(deviceId)` returns what a purge would remove
+  as of now (`DevicePurgePreview`: attachments, production runs, telemetry
+  sessions with the stored readings' time span, video sessions).
+  `create(deviceId, { scopes })` queues one (`202`, the row comes back
+  `queued` with `counts: {}`; a worker deletes in resumable chunks).
+  `get(deviceId, purgeId)` is the row to poll until `status` is `succeeded`
+  or `failed`. `list(deviceId, { limit? })` is the audit trail, newest first,
+  at most 20, not paginated.
+- Types `DevicePurgeScope` (`"workflows" | "telemetry" | "media"`),
+  `DevicePurgeStatus`, `DevicePurgeCounts`, `DevicePurge` (with `cutoff`,
+  `cursor.step` and the computed `stalled`), `DevicePurgePreview`,
+  `DevicePurgeCreateParams` and `ListDevicePurgesParams`.
+- Error codes `PURGE_IN_PROGRESS` and `TRANSFER_PENDING` (409) and
+  `PURGE_DISPATCH_FAILED` (502: the row was recorded but never queued,
+  nothing was deleted, safe to retry).
+
+### Fixed
+
+- The `devices.delete()` doc comment claimed the AWS IoT thing and certificate
+  are not torn down. They have been since the destroy mechanism (API 0.7),
+  along with the KVS channels, the uploaded objects and the FK-less telemetry
+  history; the comment now says so and points at `purges` for the
+  keep-the-device case.
+
 ## 0.9.0
 
 Webhooks (API 0.10.0). Purely additive.

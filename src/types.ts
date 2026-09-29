@@ -1530,6 +1530,136 @@ export interface ListTransferOffersParams {
 }
 
 // ---------------------------------------------------------------------------
+// Device data purge
+// ---------------------------------------------------------------------------
+
+/**
+ * What a purge removes, per scope. The device itself (row, identity,
+ * certificate, live channels, settings, webhook routes, latest-value cache)
+ * stays whatever the scopes are.
+ *
+ * - `workflows`: every attached workflow is detached, and every production run
+ *   of this device (including runs of workflows detached earlier) goes with its
+ *   steps, events and S3 artifacts. Running runs are stopped. The
+ *   organization's templates and their simulation runs are untouched.
+ * - `telemetry`: recorded telemetry sessions, their segments and overview
+ *   artifacts, the ingest log, and every stored reading.
+ * - `media`: recorded video sessions, their segments and thumbnails.
+ */
+export type DevicePurgeScope = "workflows" | "telemetry" | "media";
+
+/**
+ * `queued` until a worker picks the purge up, `running` while it walks its
+ * steps, then `succeeded` or `failed` (see `DevicePurge.error`). A failed purge
+ * may have removed part of the data; `counts` says how much, and a new purge
+ * picks up the rest.
+ */
+export type DevicePurgeStatus = "queued" | "running" | "succeeded" | "failed";
+
+/**
+ * What a purge has removed so far. `{}` until the worker starts (every key is
+ * optional for that reason); once it has, every key is present and the scopes
+ * that were not requested stay at 0.
+ */
+export interface DevicePurgeCounts {
+  attachments?: number;
+  runs?: number;
+  /** S3 objects under the deleted runs. */
+  runObjects?: number;
+  telemetrySessions?: number;
+  telemetryObjects?: number;
+  ingestLogRows?: number;
+  /** Stored telemetry rows. */
+  readings?: number;
+  mediaSessions?: number;
+  mediaObjects?: number;
+}
+
+/**
+ * One purge of a device's history: the audit record of who asked for what and
+ * when, and the row a client polls until it is `succeeded` or `failed`.
+ */
+export interface DevicePurge {
+  /** UUIDv7, so it sorts by request time. */
+  id: string;
+  deviceId: string;
+  workspaceId: string;
+  organizationId: string;
+  scopes: DevicePurgeScope[];
+  status: DevicePurgeStatus;
+  /**
+   * ISO-8601. Data older than this is removed; what the device uploads after
+   * it is kept. Equal to `requestedAt`.
+   */
+  cutoff: string;
+  /**
+   * Where the job is. `step` is one of `workflows.attachments`,
+   * `workflows.stop`, `workflows.runs`, `telemetry.s3`, `telemetry.sessions`,
+   * `telemetry.ingestLog`, `telemetry.readings`, `media.s3`, `media.sessions`,
+   * `done`. The other keys are the step's own position and are not a stable
+   * contract. `null` until the worker starts.
+   */
+  cursor: ({ step: string } & Record<string, unknown>) | null;
+  counts: DevicePurgeCounts;
+  /** Set when `status` is `failed`. */
+  error: string | null;
+  /** User id or API key id of the principal that asked. */
+  requestedBy: string;
+  /** ISO-8601. */
+  requestedAt: string;
+  /** ISO-8601, or null until a worker claims the purge. */
+  startedAt: string | null;
+  /** ISO-8601, or null until the purge reaches a terminal status. */
+  finishedAt: string | null;
+  /** Worker lease (ISO-8601). Operational detail: read `status` and `stalled`. */
+  leaseUntil: string | null;
+  /**
+   * True when the purge is `running` but no worker has renewed its lease for
+   * over 30 minutes: the job died mid-way. A new `purges.create()` closes it
+   * as `failed` and starts over.
+   */
+  stalled: boolean;
+}
+
+/** What `devices.purges.preview()` reports a purge would remove, as of now. */
+export interface DevicePurgePreview {
+  workflows: {
+    /** Workflows attached to the device. */
+    attachments: number;
+    /** Production runs the purge would delete. */
+    runs: number;
+  };
+  telemetry: {
+    /** Recorded telemetry sessions. */
+    sessions: number;
+    /**
+     * Oldest stored reading (ISO-8601), or null when there are none. Readings
+     * are reported as a span rather than a count: counting them is the
+     * expensive part of the purge itself.
+     */
+    readingsFrom: string | null;
+    /** Newest stored reading (ISO-8601), or null when there are none. */
+    readingsTo: string | null;
+  };
+  media: {
+    /** Recorded video sessions. */
+    sessions: number;
+  };
+}
+
+export interface DevicePurgeCreateParams {
+  /** Non-empty. Duplicates are ignored. */
+  scopes: readonly DevicePurgeScope[];
+  signal?: AbortSignal;
+}
+
+export interface ListDevicePurgesParams {
+  /** 1 to 20. Default 10. */
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+// ---------------------------------------------------------------------------
 // Webhooks
 // ---------------------------------------------------------------------------
 

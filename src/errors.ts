@@ -47,7 +47,15 @@ export type XorgateApiErrorCode =
   | "SERIAL_COLLISION"
   | "TRANSFER_IN_PROGRESS"
   | "CONCURRENT_MODIFICATION"
-  | "TRANSFER_FAILED";
+  | "TRANSFER_FAILED"
+  // Device data purge (`devices.purges.create()`). `PURGE_IN_PROGRESS` and
+  // `TRANSFER_PENDING` are 409s (`details.purgeId` names the live purge);
+  // `PURGE_DISPATCH_FAILED` is a 502 that means the purge row was recorded
+  // but never queued: nothing was deleted, the row is marked `failed`, and
+  // the call is safe to retry.
+  | "PURGE_IN_PROGRESS"
+  | "TRANSFER_PENDING"
+  | "PURGE_DISPATCH_FAILED";
 
 /** Codes the SDK raises itself. No HTTP request necessarily happened. */
 export type XorgateClientErrorCode =
