@@ -39,6 +39,7 @@ const NAMESPACE_TYPES = {
   timeSync: "TimeSyncConfig",
   cellular: "CellularConfig",
   cameraMount: "CameraMountConfig",
+  simulation: "SimulationConfig",
 };
 
 function wrapComment(text, indent) {

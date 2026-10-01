@@ -55,7 +55,14 @@ export type XorgateApiErrorCode =
   // the call is safe to retry.
   | "PURGE_IN_PROGRESS"
   | "TRANSFER_PENDING"
-  | "PURGE_DISPATCH_FAILED";
+  | "PURGE_DISPATCH_FAILED"
+  // Device simulations (`devices.simulations.create()`).
+  // `SIMULATION_QUOTA_EXCEEDED` is a 409 (`details.scope` is `organization` or
+  // `global`, with `limit` and `count`); `SIMULATION_PROVISION_FAILED` is a
+  // 502 after which everything created so far was rolled back, so a retry is
+  // safe.
+  | "SIMULATION_QUOTA_EXCEEDED"
+  | "SIMULATION_PROVISION_FAILED";
 
 /** Codes the SDK raises itself. No HTTP request necessarily happened. */
 export type XorgateClientErrorCode =

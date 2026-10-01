@@ -272,6 +272,26 @@ export interface CameraMountConfig {
 }
 
 /**
+ * Device-simulator scenario selection (`simulation` namespace). Accepted only
+ * for devices created as simulated; a simulated device replays the catalog
+ * scenario `scenarioId` from `demo-assets/v1/`, parks for `gapSeconds` between
+ * laps, and loops while `loop` is true. Applied live by the replay source (5 s
+ * settings poll, and forced on every cloud config message); a changed
+ * scenarioId ends the current lap in place.
+ */
+export interface SimulationConfig {
+  /** Catalog id of the scenario to replay (demo-assets/v1/<scenarioId>/). */
+  scenarioId: string;
+  /**
+   * Replay the scenario again after the parked gap; false parks at the end of
+   * the lap until changed.
+   */
+  loop: boolean;
+  /** Parked pause between laps, seconds. */
+  gapSeconds: number;
+}
+
+/**
  * One key per config namespace, all optional. A namespace is either configured
  * or absent: the API strips cleared namespaces, so nothing is ever
  * present-but-null on read. Writing `null` is what clears one.
@@ -331,6 +351,15 @@ export interface DeviceConfig {
    * `rotationDeg: 0` forces that camera upright.
    */
   cameraMount?: CameraMountConfig;
+  /**
+   * Device-simulator scenario selection (`simulation` namespace). Accepted only
+   * for devices created as simulated; a simulated device replays the catalog
+   * scenario `scenarioId` from `demo-assets/v1/`, parks for `gapSeconds`
+   * between laps, and loops while `loop` is true. Applied live by the replay
+   * source (5 s settings poll, and forced on every cloud config message); a
+   * changed scenarioId ends the current lap in place.
+   */
+  simulation?: SimulationConfig;
 }
 
 /** Every namespace replaced WHOLE. `null` reverts it to the device defaults. */
@@ -339,7 +368,7 @@ export type DeviceConfigPatch = {
 };
 
 /** The namespace keys, in contract order. */
-export const CONFIG_NAMESPACES = ["gnssAntBias", "imuMount", "recording", "lteRecovery", "timeSync", "cellular", "cameraMount"] as const;
+export const CONFIG_NAMESPACES = ["gnssAntBias", "imuMount", "recording", "lteRecovery", "timeSync", "cellular", "cameraMount", "simulation"] as const;
 
 /** Cloud-only presentation preferences. Never delivered to the device. */
 export interface DeviceUiPrefs {

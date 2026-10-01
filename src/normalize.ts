@@ -165,6 +165,9 @@ export function normalizeDevice(value: unknown): Device {
     // Absent on a pre-cm4-support backend; false is the right read there
     // (probe-at-claim did not exist, so no device is awaiting a model).
     needsModel: row["needsModel"] === true,
+    // Absent on a backend that predates the device simulator; every device
+    // there is real.
+    simulated: row["simulated"] === true,
     lastSeenAt: (row["lastSeenAt"] as string | null) ?? null,
     config: (row["config"] as DeviceConfig | null) ?? {},
     configRev: typeof row["configRev"] === "number" ? row["configRev"] : 0,

@@ -544,3 +544,112 @@ test("devices.purges.get: GET /devices/{id}/purges/{purgeId} unwraps the purge w
   assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/devices/dev-1/purges/p%2F1");
   assert.equal(stub.calls[0]!.headers["x-organization-id"], "org-1");
 });
+
+// ---- devices.simulations ---------------------------------------------------
+
+function simulationRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    deviceId: "dev-1",
+    scenarioId: "city-2026-09-27",
+    desiredState: "running",
+    startRequestedAt: null,
+    hostId: null,
+    hostState: "pending",
+    hostMessage: null,
+    hostReportedAt: null,
+    createdBy: "user-1",
+    createdAt: "2026-10-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("devices.simulations.create: POST /device-simulations, normalizes the device and returns the simulation", async () => {
+  const { xg, stub } = client([
+    {
+      status: 201,
+      body: {
+        device: deviceRow({ serial: "SIM-0a1b2c3d", simulated: true }),
+        simulation: simulationRow({ scenarioId: "parked-2026-09-17" }),
+      },
+    },
+  ]);
+  const created = await xg.devices.simulations.create({ workspaceId: "ws-1", scenarioId: "parked-2026-09-17" });
+  assert.equal(created.device.simulated, true);
+  assert.equal(created.device.serial, "SIM-0a1b2c3d");
+  assert.equal(created.simulation.scenarioId, "parked-2026-09-17");
+  assert.equal(created.simulation.hostState, "pending");
+  assert.equal(stub.calls[0]!.method, "POST");
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/device-simulations");
+  assert.deepEqual(stub.calls[0]!.body, { workspaceId: "ws-1", scenarioId: "parked-2026-09-17" });
+  assert.equal(stub.calls[0]!.headers["x-organization-id"], "org-1");
+});
+
+test("devices.simulations.create: a 409 SIMULATION_QUOTA_EXCEEDED surfaces its scope", async () => {
+  const { xg } = client([
+    {
+      status: 409,
+      body: {
+        error: {
+          code: "SIMULATION_QUOTA_EXCEEDED",
+          message: "limit",
+          details: { scope: "organization", limit: 2, count: 2 },
+        },
+      },
+    },
+  ]);
+  await assert.rejects(
+    xg.devices.simulations.create({ workspaceId: "ws-1" }),
+    (e: unknown) =>
+      isXorgateError(e) && e.code === "SIMULATION_QUOTA_EXCEEDED" && e.status === 409 && e.details?.scope === "organization",
+  );
+});
+
+test("devices.simulations.get/start: GET and POST under /device-simulations/{id}", async () => {
+  const running = simulationRow({ hostId: "homelab-dev", hostState: "running", hostMessage: "connected" });
+  const started = simulationRow({ startRequestedAt: "2026-10-01T01:00:00.000Z" });
+  const { xg, stub } = client([{ body: { simulation: running } }, { body: { simulation: started } }]);
+  assert.deepEqual(await xg.devices.simulations.get("dev 1"), running);
+  assert.equal(stub.calls[0]!.method, "GET");
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/device-simulations/dev%201");
+
+  assert.deepEqual(await xg.devices.simulations.start("dev-1"), started);
+  assert.equal(stub.calls[1]!.method, "POST");
+  assert.equal(new URL(stub.calls[1]!.url).pathname, "/v1/device-simulations/dev-1/start");
+});
+
+test("devices.simulations.scenarios.list: GET /device-simulations/scenarios returns the flat catalog", async () => {
+  const catalog = {
+    assetsVersion: "v1",
+    defaultScenarioId: "city-2026-09-27",
+    scenarios: [
+      {
+        id: "city-2026-09-27",
+        title: "City drive with stops",
+        description: null,
+        durationMs: 940000,
+        distanceM: 7890,
+        maxKph: 108.9,
+        streams: [{ streamKey: "cam0", width: 1280, height: 720, fps: 15 }],
+        thumbnailUrl: "https://s3.example/thumb.jpg?sig",
+      },
+    ],
+  };
+  const { xg, stub } = client([{ body: catalog }]);
+  assert.deepEqual(await xg.devices.simulations.scenarios.list(), catalog);
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/device-simulations/scenarios");
+});
+
+test("devices.list({ simulated }) sends the filter as a string, and Device.simulated defaults to false", async () => {
+  const { xg, stub } = client([
+    { body: { devices: [deviceRow({ simulated: true })], page: { limit: 50, offset: 0, order: "desc", total: 1 } } },
+    { body: { devices: [deviceRow()], page: { limit: 50, offset: 0, order: "desc", total: 1 } } },
+  ]);
+  const sims = await xg.devices.list({ simulated: true });
+  assert.equal(new URL(stub.calls[0]!.url).searchParams.get("simulated"), "true");
+  assert.equal(sims.items[0]!.simulated, true);
+
+  const all = await xg.devices.list();
+  assert.equal(new URL(stub.calls[1]!.url).searchParams.has("simulated"), false);
+  // A backend that predates simulations sends no flag: every device is real.
+  assert.equal(all.items[0]!.simulated, false);
+});

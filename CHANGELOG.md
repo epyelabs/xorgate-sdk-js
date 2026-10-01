@@ -3,6 +3,35 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.11.0
+
+Device simulations (API 0.11.0, `plans/xorgate-device-simulator`). Purely
+additive.
+
+### Added
+
+- **`xg.devices.simulations`**: devices with no hardware. A simulated device
+  is the real device agent replaying a recorded drive on a loop in a hosted
+  container. `create({ workspaceId, name?, scenarioId? })` (owner/admin)
+  returns `{ device, simulation }`; `get(deviceId)` returns the
+  `DeviceSimulation` (desired state plus what the host last reported:
+  `hostState`, `hostMessage`, `hostReportedAt`); `start(deviceId)` powers on a
+  sim parked by a `power_off` command; `scenarios.list()` returns the scenario
+  catalog with presigned thumbnails. Everything else, delete included, is the
+  ordinary `xg.devices` surface.
+- **`Device.simulated`** (fixed at creation; `false` against an older
+  backend) and **`devices.list({ simulated })`**.
+- **`DeviceConfig.simulation`** (`SimulationConfig`: `scenarioId`, `loop`,
+  `gapSeconds`, all three required), generated from the re-vendored config
+  contract. Only a simulated device accepts it; switch scenario with
+  `mergeConfig(id, { simulation: { scenarioId } })` and then `reboot(id)`.
+- Types `DeviceSimulation`, `SimulationHostState`,
+  `CreateDeviceSimulationInput`, `CreatedDeviceSimulation`,
+  `SimulationScenario`, `SimulationScenarioCatalog`.
+- Error codes `SIMULATION_QUOTA_EXCEEDED` (409; `details.scope` is
+  `organization` or `global`) and `SIMULATION_PROVISION_FAILED` (502, rolled
+  back, safe to retry).
+
 ## 0.10.0
 
 Device data purge (API 0.10.0, `plans/device-wf-data-delete`). Purely additive.

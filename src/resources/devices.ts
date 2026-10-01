@@ -7,12 +7,15 @@ import type {
   BulkTransferItem,
   CommandAccepted,
   CreateDeviceInput,
+  CreateDeviceSimulationInput,
+  CreatedDeviceSimulation,
   Device,
   DeviceConfig,
   DeviceConfigPatch,
   DeviceConfigView,
   DeviceIdentity,
   DeviceProvisioning,
+  DeviceSimulation,
   DevicePurge,
   DevicePurgeCreateParams,
   DevicePurgePreview,
@@ -22,6 +25,7 @@ import type {
   ListDevicePurgesParams,
   ListDevicesParams,
   Page,
+  SimulationScenarioCatalog,
   TransferDeviceInput,
   TransferPreview,
   TransferResult,
@@ -183,11 +187,112 @@ class DevicePurgesResource {
   }
 }
 
+/** `xg.devices.simulations.scenarios`: the replayable recorded drives. */
+class SimulationScenariosResource {
+  constructor(
+    private readonly http: HttpCore,
+    private readonly tenancy: Tenancy,
+  ) {}
+
+  /** The scenario catalog. Thumbnail URLs are presigned and expire after an hour. */
+  async list(): Promise<SimulationScenarioCatalog> {
+    return await this.http.request<SimulationScenarioCatalog>(
+      "GET",
+      "/device-simulations/scenarios",
+      {},
+      this.tenancy,
+    );
+  }
+}
+
+/**
+ * `xg.devices.simulations`: devices with no hardware. A simulated device is
+ * the real device agent replaying a recorded drive on a loop in a hosted
+ * container: it comes online within a couple of minutes, streams live video,
+ * moves on the map and arrives with five seeded recorded sessions.
+ *
+ * Everything else about it is a NORMAL device: configure, command, browse and
+ * delete it through `xg.devices` (`delete()` also stops its container). To
+ * switch scenario, write the whole `simulation` namespace and reboot:
+ *
+ * ```ts
+ * await xg.devices.mergeConfig(deviceId, { simulation: { scenarioId: "parked-2026-09-17" } })
+ * await xg.devices.reboot(deviceId)
+ * ```
+ *
+ * `mergeConfig` matters here: the namespace is replaced whole and all three
+ * fields are required, so `patchConfig` with only `scenarioId` is a 400.
+ */
+class DeviceSimulationsResource {
+  /** The scenario catalog. See {@link SimulationScenariosResource}. */
+  readonly scenarios: SimulationScenariosResource;
+
+  constructor(
+    private readonly http: HttpCore,
+    private readonly tenancy: Tenancy,
+  ) {
+    this.scenarios = new SimulationScenariosResource(http, tenancy);
+  }
+
+  /**
+   * Owner/admin. Creates the device (serial `SIM-<8 hex>`, model Argus CM5
+   * Rev1, cam1 disabled), provisions it like a real one and hands it to the
+   * simulator host, which starts it within one pass (`get().hostState`).
+   * `409 SIMULATION_QUOTA_EXCEEDED` past the quota (2 per organization, 8
+   * overall by default); `502 SIMULATION_PROVISION_FAILED` was rolled back
+   * and is safe to retry.
+   */
+  async create(input: CreateDeviceSimulationInput): Promise<CreatedDeviceSimulation> {
+    const body = await this.http.request<{ device: unknown; simulation: DeviceSimulation }>(
+      "POST",
+      "/device-simulations",
+      { body: input },
+      this.tenancy,
+    );
+    return {
+      device: normalizeDevice(unwrap(body, "device")),
+      simulation: unwrap<DeviceSimulation>(body, "simulation"),
+    };
+  }
+
+  /**
+   * What the host was asked to do and what it last reported. A device that
+   * is not simulated is a `404`.
+   */
+  async get(deviceId: string): Promise<DeviceSimulation> {
+    const body = await this.http.request(
+      "GET",
+      `/device-simulations/${encodeURIComponent(deviceId)}`,
+      {},
+      this.tenancy,
+    );
+    return unwrap<DeviceSimulation>(body, "simulation");
+  }
+
+  /**
+   * Owner/admin. "Power on": a `power_off` command parks a simulated device
+   * and it stays off (`hostState: "stopped"`) until this is called. The host
+   * acts on its next pass; watch the device's `status` turn `online`.
+   * Idempotent.
+   */
+  async start(deviceId: string): Promise<DeviceSimulation> {
+    const body = await this.http.request(
+      "POST",
+      `/device-simulations/${encodeURIComponent(deviceId)}/start`,
+      {},
+      this.tenancy,
+    );
+    return unwrap<DeviceSimulation>(body, "simulation");
+  }
+}
+
 export class DevicesResource {
   /** Per-device webhook routes. See {@link DeviceWebhooksResource}. */
   readonly webhooks: DeviceWebhooksResource;
   /** Purge a device's history without deleting the device. See {@link DevicePurgesResource}. */
   readonly purges: DevicePurgesResource;
+  /** Simulated devices: create, state, power on, scenarios. See {@link DeviceSimulationsResource}. */
+  readonly simulations: DeviceSimulationsResource;
 
   constructor(
     private readonly http: HttpCore,
@@ -195,6 +300,7 @@ export class DevicesResource {
   ) {
     this.webhooks = new DeviceWebhooksResource(http, tenancy);
     this.purges = new DevicePurgesResource(http, tenancy);
+    this.simulations = new DeviceSimulationsResource(http, tenancy);
   }
 
   /**
@@ -213,6 +319,7 @@ export class DevicesResource {
           order: params.order,
           sort: params.sort,
           status: params.status,
+          simulated: params.simulated === undefined ? undefined : String(params.simulated),
         },
         ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
         ...(params.signal ? { signal: params.signal } : {}),

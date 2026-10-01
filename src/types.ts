@@ -29,6 +29,7 @@ export type {
   TimeSyncConfig,
   CameraMountConfig,
   CellularConfig,
+  SimulationConfig,
 } from "./generated/config.js";
 export { CONFIG_NAMESPACES } from "./generated/config.js";
 
@@ -465,6 +466,13 @@ export interface Device {
    * `update({ deviceModelId })` confirms one, which clears this.
    */
   needsModel: boolean;
+  /**
+   * A device-simulator device: the real agent replaying a recorded drive in a
+   * hosted container, created by `devices.simulations.create()`. Fixed at
+   * creation. Only a simulated device accepts the `simulation` config
+   * namespace. `false` on a backend that predates simulations.
+   */
+  simulated: boolean;
   lastSeenAt: string | null;
   config: DeviceConfig;
   /** Bumped on every config write; carried on the retained MQTT message as `rev`. */
@@ -1056,6 +1064,8 @@ export interface ListDevicesParams extends ListParams {
   workspaceId?: string;
   status?: DeviceStatus | "any";
   sort?: DeviceSortKey;
+  /** `true` only simulated devices, `false` only real ones; omitted, both. */
+  simulated?: boolean;
   signal?: AbortSignal;
 }
 
@@ -2043,3 +2053,69 @@ export interface VerifyWebhookSignatureInput {
 export type WebhookHeadersLike =
   | { get(name: string): string | null }
   | Record<string, string | readonly string[] | undefined>;
+
+// ---- device simulations ------------------------------------------------------
+
+/** What the sim host last said about a simulation. */
+export type SimulationHostState = "pending" | "starting" | "running" | "stopped" | "error";
+
+/** `GET /device-simulations/{id}`. 1:1 with its device; `deviceId` is the only id. */
+export interface DeviceSimulation {
+  deviceId: string;
+  /**
+   * The scenario the device is on now: its `simulation` config namespace, or
+   * the one it was created with when the namespace is absent.
+   */
+  scenarioId: string;
+  desiredState: "running" | "stopped";
+  /** The last "Power on" request (`start()`), ISO-8601. */
+  startRequestedAt: string | null;
+  /** The host that last reported this simulation. */
+  hostId: string | null;
+  /**
+   * `pending` until a host first reports it. `running` means the agent in the
+   * container is connected, not merely that the container is up. `stopped` is
+   * a sim parked by a `power_off` command: `start()` powers it back on.
+   */
+  hostState: SimulationHostState;
+  hostMessage: string | null;
+  hostReportedAt: string | null;
+  /** User id or API key id. */
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CreateDeviceSimulationInput {
+  /** Must belong to the active organization. */
+  workspaceId: string;
+  /** Defaults to `Simulator SIM-<8 hex>`. At most 120 characters. */
+  name?: string | null;
+  /** A scenario from `devices.simulations.scenarios.list()`. Defaults to the catalog default. */
+  scenarioId?: string | null;
+}
+
+export interface CreatedDeviceSimulation {
+  device: Device;
+  simulation: DeviceSimulation;
+}
+
+/** One replayable recorded drive of the scenario catalog. */
+export interface SimulationScenario {
+  id: string;
+  title: string;
+  description: string | null;
+  /** One lap, ms. */
+  durationMs: number | null;
+  distanceM: number | null;
+  maxKph: number | null;
+  streams: { streamKey: string; width: number | null; height: number | null; fps: number | null }[];
+  /** Presigned; expires an hour after the call. */
+  thumbnailUrl: string | null;
+}
+
+export interface SimulationScenarioCatalog {
+  assetsVersion: string;
+  /** What `create()` uses when no `scenarioId` is given. */
+  defaultScenarioId: string;
+  scenarios: SimulationScenario[];
+}
