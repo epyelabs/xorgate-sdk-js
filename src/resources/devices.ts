@@ -23,6 +23,8 @@ import type {
   DeviceWebhookRoute,
   IterateOptions,
   ListDevicePurgesParams,
+  SmsRead,
+  SmsReadParams,
   ListDevicesParams,
   Page,
   SimulationScenarioCatalog,
@@ -286,6 +288,74 @@ class DeviceSimulationsResource {
   }
 }
 
+/**
+ * `xg.devices.sms`: read the SMS stored on a device's SIM7600 modem, on
+ * demand. Nothing streams: `read()` asks the device, which answers in a few
+ * seconds; poll `get()` until `status` leaves `pending`. Reading never marks
+ * a message read on the SIM.
+ *
+ * Xorgate keeps exactly one copy per device, the latest `ok` read, so
+ * `latest()` still answers while the device is offline. Any organization
+ * member may read.
+ */
+class DeviceSmsResource {
+  constructor(
+    private readonly http: HttpCore,
+    private readonly tenancy: Tenancy,
+  ) {}
+
+  /**
+   * Ask the device for its newest `limit` messages (1 to 50, default 10).
+   * Returns the read in `status: "pending"` (the API answered `202`). `409
+   * DEVICE_OFFLINE` when the device is not online; `409 UNSUPPORTED_AGENT`
+   * when its agent predates this feature; `502 COMMAND_PUBLISH_FAILED` when
+   * the command never left (the read is recorded as `error`).
+   */
+  async read(deviceId: string, params: SmsReadParams = {}): Promise<SmsRead> {
+    return await this.http.request<SmsRead>(
+      "POST",
+      `/devices/${encodeURIComponent(deviceId)}/sms-reads`,
+      {
+        body: params.limit === undefined ? {} : { limit: params.limit },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
+    );
+  }
+
+  /**
+   * One read. Poll every 1 to 2 seconds while `status` is `pending`; a read
+   * the device has not answered within 45 s comes back `expired`. A read of
+   * another device, or one replaced by a newer `ok` read, is a `404`.
+   */
+  async get(deviceId: string, readId: string): Promise<SmsRead> {
+    return await this.http.request<SmsRead>(
+      "GET",
+      `/devices/${encodeURIComponent(deviceId)}/sms-reads/${encodeURIComponent(readId)}`,
+      {},
+      this.tenancy,
+    );
+  }
+
+  /**
+   * The stored copy: the newest `ok` read, online or not. `null` when the
+   * device has never been read.
+   */
+  async latest(deviceId: string): Promise<SmsRead | null> {
+    try {
+      return await this.http.request<SmsRead>(
+        "GET",
+        `/devices/${encodeURIComponent(deviceId)}/sms-reads/latest`,
+        {},
+        this.tenancy,
+      );
+    } catch (err) {
+      if (isXorgateError(err) && err.code === "NO_SMS_READ") return null;
+      throw err;
+    }
+  }
+}
+
 export class DevicesResource {
   /** Per-device webhook routes. See {@link DeviceWebhooksResource}. */
   readonly webhooks: DeviceWebhooksResource;
@@ -293,6 +363,8 @@ export class DevicesResource {
   readonly purges: DevicePurgesResource;
   /** Simulated devices: create, state, power on, scenarios. See {@link DeviceSimulationsResource}. */
   readonly simulations: DeviceSimulationsResource;
+  /** On-demand SMS reads from the device's modem. See {@link DeviceSmsResource}. */
+  readonly sms: DeviceSmsResource;
 
   constructor(
     private readonly http: HttpCore,
@@ -301,6 +373,7 @@ export class DevicesResource {
     this.webhooks = new DeviceWebhooksResource(http, tenancy);
     this.purges = new DevicePurgesResource(http, tenancy);
     this.simulations = new DeviceSimulationsResource(http, tenancy);
+    this.sms = new DeviceSmsResource(http, tenancy);
   }
 
   /**

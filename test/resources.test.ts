@@ -653,3 +653,73 @@ test("devices.list({ simulated }) sends the filter as a string, and Device.simul
   // A backend that predates simulations sends no flag: every device is real.
   assert.equal(all.items[0]!.simulated, false);
 });
+
+// ---- devices.sms -----------------------------------------------------------
+
+function smsRead(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "r-1",
+    deviceId: "dev-1",
+    status: "pending",
+    errorCode: null,
+    errorMessage: null,
+    limit: 10,
+    requestedBy: "user-1",
+    createdAt: "2026-10-01T21:56:47.631Z",
+    completedAt: null,
+    result: null,
+    ...overrides,
+  };
+}
+
+test("devices.sms.read: POST { limit } to /devices/{id}/sms-reads, returns the bare 202 row", async () => {
+  const { xg, stub } = client([{ status: 202, body: smsRead({ limit: 25 }) }]);
+  const read = await xg.devices.sms.read("dev 1", { limit: 25 });
+  assert.equal(read.status, "pending");
+  assert.equal(read.limit, 25);
+  assert.equal(stub.calls[0]!.method, "POST");
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/devices/dev%201/sms-reads");
+  assert.deepEqual(stub.calls[0]!.body, { limit: 25 });
+  assert.equal(stub.calls[0]!.headers["x-organization-id"], "org-1");
+});
+
+test("devices.sms.read: no limit sends an empty body (server default 10)", async () => {
+  const { xg, stub } = client([{ status: 202, body: smsRead() }]);
+  await xg.devices.sms.read("dev-1");
+  assert.deepEqual(stub.calls[0]!.body, {});
+});
+
+test("devices.sms.read: 409 DEVICE_OFFLINE surfaces its code", async () => {
+  const { xg } = client([
+    { status: 409, body: { error: { code: "DEVICE_OFFLINE", message: "offline" } } },
+  ]);
+  await assert.rejects(
+    xg.devices.sms.read("dev-1"),
+    (e: unknown) => isXorgateError(e) && e.code === "DEVICE_OFFLINE" && e.status === 409,
+  );
+});
+
+test("devices.sms.get: GET /devices/{id}/sms-reads/{readId}", async () => {
+  const ok = smsRead({
+    status: "ok",
+    completedAt: "2026-10-01T21:56:49.391Z",
+    result: { storage: { SM: { used: 7, total: 40 } }, total: 1, skipped: 0, partial: false, durationMs: 270, messages: [] },
+  });
+  const { xg, stub } = client([{ body: ok }]);
+  const read = await xg.devices.sms.get("dev-1", "r/1");
+  assert.equal(read.status, "ok");
+  assert.equal(read.result?.total, 1);
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/devices/dev-1/sms-reads/r%2F1");
+});
+
+test("devices.sms.latest: the stored read, or null on 404 NO_SMS_READ", async () => {
+  const { xg, stub } = client([
+    { body: smsRead({ status: "ok" }) },
+    { status: 404, body: { error: { code: "NO_SMS_READ", message: "never read" } } },
+    { status: 404, body: { error: { code: "NOT_FOUND", message: "no device" } } },
+  ]);
+  assert.equal((await xg.devices.sms.latest("dev-1"))?.status, "ok");
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/devices/dev-1/sms-reads/latest");
+  assert.equal(await xg.devices.sms.latest("dev-1"), null);
+  await assert.rejects(xg.devices.sms.latest("dev-1"), (e: unknown) => isXorgateError(e) && e.code === "NOT_FOUND");
+});

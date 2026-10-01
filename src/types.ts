@@ -2119,3 +2119,89 @@ export interface SimulationScenarioCatalog {
   defaultScenarioId: string;
   scenarios: SimulationScenario[];
 }
+
+// ---- Device SMS inbox (API 0.12.0) -------------------------------------------
+
+/** Where the modem kept a message: `SM` = the SIM card, `ME` = modem memory. */
+export type SmsStorage = "SM" | "ME";
+
+/**
+ * Lifecycle of one on-demand read. `pending` until the device answers;
+ * `expired` when it did not within 45 s (a late answer can still turn it
+ * `ok`); `error` when the device answered with a failure (see `errorCode`).
+ */
+export type SmsReadStatus = "pending" | "ok" | "error" | "expired";
+
+/**
+ * Why a read did not succeed: the device's own status (`no_modem`,
+ * `no_sim`, `modem_busy`, `error`), `timeout` on expiry, or
+ * `publish_failed` when the command never reached the broker. Kept open.
+ */
+export type SmsReadErrorCode =
+  | "no_modem"
+  | "no_sim"
+  | "modem_busy"
+  | "error"
+  | "timeout"
+  | "publish_failed"
+  | (string & {});
+
+/** One stored message, multi-part messages already joined. */
+export interface SmsMessage {
+  /** `storage:index` of each part joined by `+`. Stable within one read only. */
+  id: string;
+  /** Store of the first part. */
+  storage: SmsStorage | (string & {});
+  indexes: number[];
+  /** Sender as decoded: a number, or an alphanumeric name verbatim. */
+  from: string;
+  fromType: "international" | "national" | "alphanumeric" | "other" | (string & {});
+  /** Service-centre timestamp with its own offset; `null` if undecodable. */
+  sentAt: string | null;
+  /** Unread on the SIM. Reading through Xorgate never changes this. */
+  unread: boolean;
+  /** Decoded text; a hex string when `binary`. */
+  text: string;
+  binary: boolean;
+  /** A multi-part message with parts missing. */
+  incomplete: boolean;
+  /** Text cut by the device at 4000 characters. */
+  truncated: boolean;
+}
+
+/** What an `ok` read carries. */
+export interface SmsReadResult {
+  /** Used/total per store that answered. */
+  storage: Partial<Record<SmsStorage, { used: number; total: number }>>;
+  /** Messages on the device after joining parts, before the `limit` cut. */
+  total: number;
+  /** Stored items that were not decodable messages. */
+  skipped: number;
+  /** Some messages are missing (time budget or payload size). */
+  partial: boolean;
+  durationMs: number | null;
+  /** Newest first, at most the read's `limit`. */
+  messages: SmsMessage[];
+}
+
+/** One on-demand SMS read (`xg.devices.sms`). */
+export interface SmsRead {
+  id: string;
+  deviceId: string;
+  status: SmsReadStatus;
+  errorCode: SmsReadErrorCode | null;
+  errorMessage: string | null;
+  /** How many messages were asked for (1 to 50). */
+  limit: number;
+  requestedBy: string;
+  createdAt: string;
+  completedAt: string | null;
+  /** Present when `status` is `ok`, otherwise `null`. */
+  result: SmsReadResult | null;
+}
+
+export interface SmsReadParams {
+  /** Newest N messages, 1 to 50. Default 10. */
+  limit?: number;
+  signal?: AbortSignal;
+}

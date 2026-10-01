@@ -3,6 +3,25 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.12.0
+
+Device SMS inbox (API 0.12.0, `plans/device-sms-inbox`). Purely additive.
+
+### Added
+
+- **`xg.devices.sms`**: read the SMS stored on a device's modem, on demand.
+  `read(deviceId, { limit? })` asks the device for its newest 1 to 50
+  messages (default 10) and returns an `SmsRead` in `status: "pending"`;
+  poll `get(deviceId, readId)` until it is `ok`, `error` or `expired`.
+  `latest(deviceId)` returns the stored copy (the newest `ok` read, kept even
+  while the device is offline) or `null` when the device was never read.
+  Reading never marks a message read on the SIM. Any organization member may
+  read.
+- Error codes `DEVICE_OFFLINE` and `UNSUPPORTED_AGENT` (409s from `read()`)
+  and `NO_SMS_READ` (the 404 `latest()` maps to `null`).
+- Types `SmsRead`, `SmsReadStatus`, `SmsReadErrorCode`, `SmsReadResult`,
+  `SmsMessage`, `SmsStorage`, `SmsReadParams`.
+
 ## 0.11.0
 
 Device simulations (API 0.11.0, `plans/xorgate-device-simulator`). Purely

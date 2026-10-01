@@ -62,7 +62,14 @@ export type XorgateApiErrorCode =
   // 502 after which everything created so far was rolled back, so a retry is
   // safe.
   | "SIMULATION_QUOTA_EXCEEDED"
-  | "SIMULATION_PROVISION_FAILED";
+  | "SIMULATION_PROVISION_FAILED"
+  // Device SMS inbox (`devices.sms`). `DEVICE_OFFLINE` and
+  // `UNSUPPORTED_AGENT` are 409s from `read()` (the stored copy is still
+  // served by `latest()`); `NO_SMS_READ` is the 404 `latest()` turns into
+  // `null`.
+  | "DEVICE_OFFLINE"
+  | "UNSUPPORTED_AGENT"
+  | "NO_SMS_READ";
 
 /** Codes the SDK raises itself. No HTTP request necessarily happened. */
 export type XorgateClientErrorCode =
