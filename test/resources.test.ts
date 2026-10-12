@@ -723,3 +723,31 @@ test("devices.sms.latest: the stored read, or null on 404 NO_SMS_READ", async ()
   assert.equal(await xg.devices.sms.latest("dev-1"), null);
   await assert.rejects(xg.devices.sms.latest("dev-1"), (e: unknown) => isXorgateError(e) && e.code === "NOT_FOUND");
 });
+
+test("devices.sms.clear: POST { limit } to /devices/{id}/sms/clear, returns the clear row", async () => {
+  const { xg, stub } = client([{ status: 202, body: smsRead({ action: "clear" }) }]);
+  const read = await xg.devices.sms.clear("dev 1", { limit: 10 });
+  assert.equal(read.action, "clear");
+  assert.equal(read.status, "pending");
+  assert.equal(stub.calls[0]!.method, "POST");
+  assert.equal(new URL(stub.calls[0]!.url).pathname, "/v1/devices/dev%201/sms/clear");
+  assert.deepEqual(stub.calls[0]!.body, { limit: 10 });
+});
+
+test("devices.sms.clear: 403 INSUFFICIENT_ROLE surfaces its code", async () => {
+  const { xg } = client([
+    { status: 403, body: { error: { code: "INSUFFICIENT_ROLE", message: "owner/admin only" } } },
+  ]);
+  await assert.rejects(
+    xg.devices.sms.clear("dev-1"),
+    (e: unknown) => isXorgateError(e) && e.code === "INSUFFICIENT_ROLE" && e.status === 403,
+  );
+});
+
+test("devices.sms: a row without action (API 0.12.0) reads as action 'read'", async () => {
+  const legacy: Record<string, unknown> = smsRead({ status: "ok" });
+  delete legacy.action;
+  const { xg } = client([{ body: legacy }, { body: legacy }]);
+  assert.equal((await xg.devices.sms.get("dev-1", "r-1")).action, "read");
+  assert.equal((await xg.devices.sms.latest("dev-1"))?.action, "read");
+});

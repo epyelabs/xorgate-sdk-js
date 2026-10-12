@@ -3,6 +3,22 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.13.0
+
+Device SMS clear (API 0.13.0, `plans/device-sms-clear`). Additive.
+
+### Added
+
+- **`xg.devices.sms.clear(deviceId, { limit? })`**: delete every message on
+  the device's SIM and modem, then read what is left (owner/admin only;
+  `403 INSUFFICIENT_ROLE` otherwise, `409 UNSUPPORTED_AGENT` for an agent
+  without `sms.clear`). Poll `get()` like a read. A full modem store makes
+  the SIM7600 refuse new SMS, so this is how a device starts receiving again.
+- **`SmsRead.action`** (`"read" | "clear"`, typed `SmsReadAction`). Rows from
+  an older API, which carry none, come back as `"read"`.
+- **`SmsReadResult.cleared`**: for a clear, how many messages each store
+  held before the delete.
+
 ## 0.12.0
 
 Device SMS inbox (API 0.12.0, `plans/device-sms-inbox`). Purely additive.

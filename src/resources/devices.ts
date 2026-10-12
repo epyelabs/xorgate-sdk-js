@@ -288,6 +288,11 @@ class DeviceSimulationsResource {
   }
 }
 
+/** API 0.12.0 rows carry no `action`; they were all reads. */
+function withAction(read: SmsRead): SmsRead {
+  return read.action ? read : { ...read, action: "read" };
+}
+
 /**
  * `xg.devices.sms`: read the SMS stored on a device's SIM7600 modem, on
  * demand. Nothing streams: `read()` asks the device, which answers in a few
@@ -312,7 +317,7 @@ class DeviceSmsResource {
    * the command never left (the read is recorded as `error`).
    */
   async read(deviceId: string, params: SmsReadParams = {}): Promise<SmsRead> {
-    return await this.http.request<SmsRead>(
+    return withAction(await this.http.request<SmsRead>(
       "POST",
       `/devices/${encodeURIComponent(deviceId)}/sms-reads`,
       {
@@ -320,7 +325,29 @@ class DeviceSmsResource {
         ...(params.signal ? { signal: params.signal } : {}),
       },
       this.tenancy,
+    ));
+  }
+
+  /**
+   * Delete every message on the device's SIM and modem, then read what is
+   * left. Owner/admin only (`403 INSUFFICIENT_ROLE` otherwise). Returns an
+   * `SmsRead` with `action: "clear"` in `status: "pending"`; poll `get()`
+   * like a read. When it lands `ok`, `result.cleared` counts what was
+   * deleted per store and the result becomes the stored copy (`latest()`).
+   * `409 UNSUPPORTED_AGENT` when the device's agent cannot clear. There is
+   * no undo.
+   */
+  async clear(deviceId: string, params: SmsReadParams = {}): Promise<SmsRead> {
+    const read = await this.http.request<SmsRead>(
+      "POST",
+      `/devices/${encodeURIComponent(deviceId)}/sms/clear`,
+      {
+        body: params.limit === undefined ? {} : { limit: params.limit },
+        ...(params.signal ? { signal: params.signal } : {}),
+      },
+      this.tenancy,
     );
+    return withAction(read);
   }
 
   /**
@@ -329,12 +356,12 @@ class DeviceSmsResource {
    * another device, or one replaced by a newer `ok` read, is a `404`.
    */
   async get(deviceId: string, readId: string): Promise<SmsRead> {
-    return await this.http.request<SmsRead>(
+    return withAction(await this.http.request<SmsRead>(
       "GET",
       `/devices/${encodeURIComponent(deviceId)}/sms-reads/${encodeURIComponent(readId)}`,
       {},
       this.tenancy,
-    );
+    ));
   }
 
   /**
@@ -343,12 +370,12 @@ class DeviceSmsResource {
    */
   async latest(deviceId: string): Promise<SmsRead | null> {
     try {
-      return await this.http.request<SmsRead>(
+      return withAction(await this.http.request<SmsRead>(
         "GET",
         `/devices/${encodeURIComponent(deviceId)}/sms-reads/latest`,
         {},
         this.tenancy,
-      );
+      ));
     } catch (err) {
       if (isXorgateError(err) && err.code === "NO_SMS_READ") return null;
       throw err;

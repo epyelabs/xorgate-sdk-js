@@ -2182,12 +2182,22 @@ export interface SmsReadResult {
   durationMs: number | null;
   /** Newest first, at most the read's `limit`. */
   messages: SmsMessage[];
+  /**
+   * Clears only: how many messages each store held before the delete. The
+   * rest of the result describes the device after it (normally empty).
+   */
+  cleared?: Partial<Record<SmsStorage, number>>;
 }
+
+/** `read` asks for messages; `clear` deletes them all, then reads. */
+export type SmsReadAction = "read" | "clear";
 
 /** One on-demand SMS read (`xg.devices.sms`). */
 export interface SmsRead {
   id: string;
   deviceId: string;
+  /** What was asked of the device. `"read"` from an API older than 0.13.0. */
+  action: SmsReadAction;
   status: SmsReadStatus;
   errorCode: SmsReadErrorCode | null;
   errorMessage: string | null;
