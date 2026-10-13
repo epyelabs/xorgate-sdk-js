@@ -493,7 +493,7 @@
     "obd": {
       "applyClass": "agent-poll",
       "kind": "object",
-      "description": "Vehicle OBD-II adapter settings (`obd` namespace). Accepted only for devices whose model declares `peripherals.obd` (400 otherwise). Every field is optional and an omitted field falls back to the device default, but the namespace is replaced WHOLE on write (send the fields you want to keep). `adapterMac` names the ELM327 Bluetooth adapter the device pairs with (stored uppercase; the device never pairs by name), `enabled` is the polling kill switch, `fields` narrows the polled set below the model's declared list (empty = all), and `powerSource` selects the battery policy. Applied live by the agent's OBD collector on its settings poll and on every cloud config message; a changed adapter restarts the helper. Pairing outcome, probe profile and scan candidates come back in the config report under `effective.obd`.",
+      "description": "Vehicle OBD-II adapter settings (`obd` namespace). Accepted only for devices whose model declares `peripherals.obd` (400 otherwise). Every field is optional and an omitted field falls back to the device default, but the namespace is replaced WHOLE on write (send the fields you want to keep). `adapterMac` names the ELM327 Bluetooth adapter the device pairs with (stored uppercase; the device never pairs by name), `enabled` is the polling kill switch, `fields` narrows the polled set below the model's declared list (empty = all), and `powerSource` says how the tracker device (not the adapter) is powered, which selects the battery policy. Applied live by the agent's OBD collector on its settings poll and on every cloud config message; a changed adapter restarts the helper. Pairing outcome, probe profile and scan candidates come back in the config report under `effective.obd`.",
       "defaults": {
         "enabled": false,
         "adapterMac": null,
@@ -563,7 +563,7 @@
               "switched",
               "constant"
             ],
-            "description": "How the device is powered in the vehicle. \"switched\" (default): the 12 V socket dies with the ignition, so the helper only needs to stop cleanly when the ECU goes silent. \"constant\": hardwired; the helper additionally stops polling below 11.8 V and resumes above 12.4 V so it can never drain the battery."
+            "description": "How the tracker device itself is powered, NOT the adapter (the vehicle's OBD port powers the adapter either way). \"switched\" (default): the device sits on a 12 V socket that dies with the ignition, so polling simply ends when the device loses power; the helper only needs to stop cleanly when the ECU goes silent. \"constant\": the device is hardwired, always on; the helper stops polling when the ECU goes silent and additionally pauses below 11.8 V, resuming above 12.4 V, so it can never drain the battery."
           }
         },
         "additionalProperties": false
