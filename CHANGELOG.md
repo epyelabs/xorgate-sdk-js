@@ -40,6 +40,7 @@ OBD-II peripherals (API 0.14.0, `plans/obd2-bluetooth-integration`). Additive.
 - **`validateIoCapabilities()`** checks the section: an unknown field name,
   adapter or transport is an issue at its path (`peripherals.obd.fields[3]`).
 
+## 0.13.0
 
 Device SMS clear (API 0.13.0, `plans/device-sms-clear`). Additive.
 
