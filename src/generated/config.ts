@@ -333,7 +333,7 @@ export interface ObdConfig {
    * Empty (default) = every field the model declares. The device skips any
    * field the vehicle does not support regardless.
    */
-  fields?: "rpm" | "speed" | "coolant_temp" | "engine_load" | "throttle" | "pedal" | "intake_temp" | "ambient_temp" | "intake_map" | "baro" | "fuel_level" | "fuel_rate" | "module_voltage" | "adapter_voltage" | "run_time" | "odometer" | "gear" | "distance_since_clear" | "mil" | "dtc_count" | "link"[];
+  fields?: ("rpm" | "speed" | "coolant_temp" | "engine_load" | "throttle" | "pedal" | "intake_temp" | "ambient_temp" | "intake_map" | "baro" | "fuel_level" | "fuel_rate" | "module_voltage" | "adapter_voltage" | "run_time" | "odometer" | "gear" | "distance_since_clear" | "mil" | "dtc_count" | "link")[];
   /**
    * How the device is powered in the vehicle. "switched" (default): the 12 V
    * socket dies with the ignition, so the helper only needs to stop cleanly

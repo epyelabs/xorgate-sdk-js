@@ -23,6 +23,11 @@ OBD-II adapter setup (API 0.15.0, `plans/obd2-bluetooth-integration` P3). Additi
 - **`Device.obdScanRequestedAt`**: when the last scan was accepted; `null`
   on an older backend.
 
+### Fixed
+
+- The generator parenthesizes a union item type before `[]`, so
+  `ObdConfig.fields` is `ObdField[]` rather than one field or a `"link"[]`.
+
 ## 0.14.0
 
 OBD-II peripherals (API 0.14.0, `plans/obd2-bluetooth-integration`). Additive.

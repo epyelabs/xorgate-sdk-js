@@ -88,8 +88,13 @@ function baseTsType(schema, indent) {
       return "number";
     case "string":
       return "string";
-    case "array":
-      return `${tsType(schema.items ?? { type: "unknown" }, indent)}[]`;
+    case "array": {
+      const item = tsType(schema.items ?? { type: "unknown" }, indent);
+      // A union item (an enum, a nullable) must be parenthesized: `"a" | "b"[]`
+      // is `"a" | ("b"[])`, which typed `obd.fields` as one field OR a list
+      // of "link" (0.15.0 generator finding).
+      return item.includes(" | ") ? `(${item})[]` : `${item}[]`;
+    }
     case "object": {
       if (!schema.properties) {
         // Open map, e.g. recording.video.cameras: {"cam1": false}.
