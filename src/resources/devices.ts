@@ -775,7 +775,7 @@ export class DevicesResource {
 
   // ---- commands ------------------------------------------------------------
 
-  /** All four require the device to be ONLINE (409 otherwise). */
+  /** Every command requires the device to be ONLINE (409 otherwise). */
   reboot(id: string): Promise<CommandAccepted> {
     return this.command(id, "reboot");
   }
@@ -792,6 +792,37 @@ export class DevicesResource {
   /** Owner/admin. Observe by polling `agentVersion`; the ack cannot tell you. */
   updateAgent(id: string): Promise<CommandAccepted> {
     return this.command(id, "update");
+  }
+
+  /**
+   * Ask an OBD-II kit to scan for nearby Bluetooth adapters (API 0.15.0).
+   * The device runs one bounded discovery, never pairs with what it finds,
+   * and writes the candidates into its next config report:
+   * `reportedConfig.effective.obd.scan = { ts, candidates: [{ mac, name, rssi }] }`.
+   * Poll `get(id)` until that `ts` passes the request (10 to 20 s), then
+   * write the chosen MAC with `mergeConfig(id, { obd: { adapterMac } })`.
+   *
+   * Any member. Only for a device whose model declares `peripherals.obd`
+   * (`400` `NOT_OBD_DEVICE` otherwise). Rate-limited to one per device per
+   * 60 s: a second call inside the window throws `RATE_LIMITED` with
+   * `retryAfterMs`, and is not retried (commands never are). Device must be
+   * online (`409`).
+   */
+  obdScan(id: string): Promise<CommandAccepted> {
+    return this.command(id, "commands/obd-scan");
+  }
+
+  /**
+   * Ask an OBD-II kit to drop the Bluetooth bond for its configured adapter
+   * and stop polling it (API 0.15.0). Does NOT clear the cloud-side `obd`
+   * namespace: pair it with `patchConfig(id, { obd: null })` (or set
+   * `adapterMac: null`), otherwise the retained config re-pairs the same
+   * adapter on the device's next settings poll. Owner/admin/member. Only for
+   * a device whose model declares `peripherals.obd` (`400` `NOT_OBD_DEVICE`).
+   * Device must be online (`409`).
+   */
+  obdForget(id: string): Promise<CommandAccepted> {
+    return this.command(id, "commands/obd-forget");
   }
 
   private command(id: string, path: string): Promise<CommandAccepted> {

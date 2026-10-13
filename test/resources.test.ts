@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createClient, isXorgateError } from "../src/index.js";
 import { deviceRow, stubFetch, type StubReply } from "./stub.js";
+import { normalizeDevice } from "../src/normalize.js";
 
 function client(replies: StubReply[], extra: Record<string, unknown> = {}) {
   const stub = stubFetch(...replies);
@@ -173,11 +174,44 @@ test("commands hit their own paths and return the flat ack", async () => {
     ["powerOff", "power-off"],
     ["refreshState", "refresh-state"],
     ["updateAgent", "update"],
+    ["obdScan", "commands/obd-scan"],
+    ["obdForget", "commands/obd-forget"],
   ] as const) {
     const c = client([{ status: 202, body: ack }]);
     await c.xg.devices[method]("dev-1");
     assert.match(c.stub.calls[0]!.url, new RegExp(`/devices/dev-1/${path}$`));
   }
+});
+
+test("obdScan surfaces the 60 s server rate limit as RATE_LIMITED with retryAfterMs, unretried", async () => {
+  const { xg, stub } = client([
+    {
+      status: 429,
+      body: {
+        error: {
+          code: "RATE_LIMITED",
+          message: "An OBD scan was requested for this device less than 60 s ago.",
+          details: { retryAfterMs: 40000 },
+        },
+      },
+    },
+  ]);
+  await assert.rejects(xg.devices.obdScan("dev-1"), (e: unknown) => {
+    assert.ok(isXorgateError(e));
+    assert.equal(e.code, "RATE_LIMITED");
+    assert.equal(e.status, 429);
+    assert.deepEqual(e.details, { retryAfterMs: 40000 });
+    return true;
+  });
+  assert.equal(stub.calls.length, 1);
+});
+
+test("obdScanRequestedAt rides on the device row and is null on an older backend", () => {
+  assert.equal(normalizeDevice(deviceRow({})).obdScanRequestedAt, null);
+  assert.equal(
+    normalizeDevice(deviceRow({ obdScanRequestedAt: "2026-10-13T12:00:00.000Z" })).obdScanRequestedAt,
+    "2026-10-13T12:00:00.000Z",
+  );
 });
 
 test("videoChannels uses the renamed route and the opaque channelRef", async () => {

@@ -168,6 +168,7 @@ export function normalizeDevice(value: unknown): Device {
     // Absent on a backend that predates the device simulator; every device
     // there is real.
     simulated: row["simulated"] === true,
+    obdScanRequestedAt: (row["obdScanRequestedAt"] as string | null) ?? null,
     lastSeenAt: (row["lastSeenAt"] as string | null) ?? null,
     config: (row["config"] as DeviceConfig | null) ?? {},
     configRev: typeof row["configRev"] === "number" ? row["configRev"] : 0,

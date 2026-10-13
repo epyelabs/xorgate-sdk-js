@@ -292,6 +292,59 @@ export interface SimulationConfig {
 }
 
 /**
+ * Vehicle OBD-II adapter settings (`obd` namespace). Accepted only for devices
+ * whose model declares `peripherals.obd` (400 otherwise). Every field is
+ * optional and an omitted field falls back to the device default, but the
+ * namespace is replaced WHOLE on write (send the fields you want to keep).
+ * `adapterMac` names the ELM327 Bluetooth adapter the device pairs with (stored
+ * uppercase; the device never pairs by name), `enabled` is the polling kill
+ * switch, `fields` narrows the polled set below the model's declared list
+ * (empty = all), and `powerSource` selects the battery policy. Applied live by
+ * the agent's OBD collector on its settings poll and on every cloud config
+ * message; a changed adapter restarts the helper. Pairing outcome, probe
+ * profile and scan candidates come back in the config report under
+ * `effective.obd`.
+ */
+export interface ObdConfig {
+  /**
+   * OBD polling kill switch. false (default) keeps the helper stopped and the
+   * vehicle card in its "not configured" state; true starts polling once an
+   * adapter is set.
+   */
+  enabled?: boolean;
+  /**
+   * Bluetooth MAC of the ELM327 adapter (AA:BB:CC:DD:EE:FF, stored uppercase).
+   * null = no adapter configured; the device never pairs by name, so this is
+   * the only way it learns which dongle is its own.
+   */
+  adapterMac?: string | null;
+  /**
+   * Pairing PIN for a legacy-pairing adapter, 4 to 6 digits (default 1234).
+   * Ignored by SSP adapters.
+   */
+  pin?: string;
+  /**
+   * Poll cycles per second, 0.2 to 2 (default 1). One cycle reads every
+   * configured field once.
+   */
+  pollHz?: number;
+  /**
+   * Fields to poll, a subset of the model's declared `peripherals.obd.fields`.
+   * Empty (default) = every field the model declares. The device skips any
+   * field the vehicle does not support regardless.
+   */
+  fields?: "rpm" | "speed" | "coolant_temp" | "engine_load" | "throttle" | "pedal" | "intake_temp" | "ambient_temp" | "intake_map" | "baro" | "fuel_level" | "fuel_rate" | "module_voltage" | "adapter_voltage" | "run_time" | "odometer" | "gear" | "distance_since_clear" | "mil" | "dtc_count" | "link"[];
+  /**
+   * How the device is powered in the vehicle. "switched" (default): the 12 V
+   * socket dies with the ignition, so the helper only needs to stop cleanly
+   * when the ECU goes silent. "constant": hardwired; the helper additionally
+   * stops polling below 11.8 V and resumes above 12.4 V so it can never drain
+   * the battery.
+   */
+  powerSource?: "switched" | "constant";
+}
+
+/**
  * One key per config namespace, all optional. A namespace is either configured
  * or absent: the API strips cleared namespaces, so nothing is ever
  * present-but-null on read. Writing `null` is what clears one.
@@ -360,6 +413,21 @@ export interface DeviceConfig {
    * changed scenarioId ends the current lap in place.
    */
   simulation?: SimulationConfig;
+  /**
+   * Vehicle OBD-II adapter settings (`obd` namespace). Accepted only for
+   * devices whose model declares `peripherals.obd` (400 otherwise). Every field
+   * is optional and an omitted field falls back to the device default, but the
+   * namespace is replaced WHOLE on write (send the fields you want to keep).
+   * `adapterMac` names the ELM327 Bluetooth adapter the device pairs with
+   * (stored uppercase; the device never pairs by name), `enabled` is the
+   * polling kill switch, `fields` narrows the polled set below the model's
+   * declared list (empty = all), and `powerSource` selects the battery policy.
+   * Applied live by the agent's OBD collector on its settings poll and on every
+   * cloud config message; a changed adapter restarts the helper. Pairing
+   * outcome, probe profile and scan candidates come back in the config report
+   * under `effective.obd`.
+   */
+  obd?: ObdConfig;
 }
 
 /** Every namespace replaced WHOLE. `null` reverts it to the device defaults. */
@@ -368,7 +436,7 @@ export type DeviceConfigPatch = {
 };
 
 /** The namespace keys, in contract order. */
-export const CONFIG_NAMESPACES = ["gnssAntBias", "imuMount", "recording", "lteRecovery", "timeSync", "cellular", "cameraMount", "simulation"] as const;
+export const CONFIG_NAMESPACES = ["gnssAntBias", "imuMount", "recording", "lteRecovery", "timeSync", "cellular", "cameraMount", "simulation", "obd"] as const;
 
 /** Cloud-only presentation preferences. Never delivered to the device. */
 export interface DeviceUiPrefs {

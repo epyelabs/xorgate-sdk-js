@@ -3,6 +3,26 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.15.0
+
+OBD-II adapter setup (API 0.15.0, `plans/obd2-bluetooth-integration` P3). Additive.
+
+### Added
+
+- **`obd` config namespace** (`ObdConfig`, generated from the re-vendored
+  contract): `enabled`, `adapterMac` (AA:BB:CC:DD:EE:FF, stored uppercase,
+  `null` = none), `pin`, `pollHz` (0.2 to 2), `fields` (subset of `ObdField`,
+  empty = all the model declares) and `powerSource` (`switched` | `constant`).
+  Every field optional; the API accepts it only for a device whose model
+  declares `peripherals.obd` and answers `400` otherwise.
+- **`devices.obdScan(id)`** and **`devices.obdForget(id)`**: the two OBD
+  device commands. A scan's candidates come back on the reported config plane
+  (`reportedConfig.effective.obd.scan`), not on the ack; the server limits
+  scans to one per device per 60 s (`RATE_LIMITED`, `details.retryAfterMs`).
+  `DeviceCommand` gains `obd_scan` | `obd_forget`.
+- **`Device.obdScanRequestedAt`**: when the last scan was accepted; `null`
+  on an older backend.
+
 ## 0.14.0
 
 OBD-II peripherals (API 0.14.0, `plans/obd2-bluetooth-integration`). Additive.

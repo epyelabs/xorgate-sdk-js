@@ -40,6 +40,7 @@ const NAMESPACE_TYPES = {
   cellular: "CellularConfig",
   cameraMount: "CameraMountConfig",
   simulation: "SimulationConfig",
+  obd: "ObdConfig",
 };
 
 function wrapComment(text, indent) {
@@ -62,6 +63,14 @@ function wrapComment(text, indent) {
 }
 
 function tsType(schema, indent) {
+  // OpenAPI-3 `nullable` (zod `.nullable()`, e.g. obd.adapterMac): the value
+  // may be null as well as the base type. Without this the SDK would type a
+  // "no adapter" write as an error while the API accepts it.
+  const base = baseTsType(schema, indent);
+  return schema.nullable === true ? `${base} | null` : base;
+}
+
+function baseTsType(schema, indent) {
   if (schema.enum) return schema.enum.map((v) => JSON.stringify(v)).join(" | ");
   // A union of literals, which is how zod renders a closed set of NUMBERS
   // (`cameraMount`'s 0 | 180) — string sets come through as a plain `enum`.

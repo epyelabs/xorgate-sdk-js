@@ -30,6 +30,7 @@ export type {
   CameraMountConfig,
   CellularConfig,
   SimulationConfig,
+  ObdConfig,
 } from "./generated/config.js";
 export { CONFIG_NAMESPACES } from "./generated/config.js";
 
@@ -540,6 +541,12 @@ export interface Device {
    * namespace. `false` on a backend that predates simulations.
    */
   simulated: boolean;
+  /**
+   * When the last `devices.obdScan()` was accepted for this device; the
+   * server refuses another inside 60 s of it. `null` = never scanned, and on
+   * a backend that predates OBD-II support. Machine-managed.
+   */
+  obdScanRequestedAt: string | null;
   lastSeenAt: string | null;
   config: DeviceConfig;
   /** Bumped on every config write; carried on the retained MQTT message as `rev`. */
@@ -629,7 +636,13 @@ export interface VideoChannel {
   region: string;
 }
 
-export type DeviceCommand = "reboot" | "power_off" | "refresh" | "update";
+export type DeviceCommand =
+  | "reboot"
+  | "power_off"
+  | "refresh"
+  | "update"
+  | "obd_scan"
+  | "obd_forget";
 
 export interface CommandAccepted {
   /** Replay key. The device refuses to execute the same one twice. */
