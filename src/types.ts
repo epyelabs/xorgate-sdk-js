@@ -428,12 +428,79 @@ export interface SystemCapabilitiesV2 {
   fields?: string[];
 }
 
+// ---- v2 peripherals (obd2-bluetooth-integration): external devices the kit
+// attaches to. Generic on purpose, like `comm` and `sensors`: `obd` is the
+// only entry today; `j1939`, `modbus`, `ble` or `tpms` could follow.
+
+/** ELM327-class OBD-II adapters the device agent speaks to. */
+export type ObdAdapter = "elm327";
+
+/** How the adapter is reached: Bluetooth SPP (RFCOMM) or a USB serial port. */
+export type ObdTransport = "bt-spp" | "usb-serial";
+
+/**
+ * Every field the device's OBD helper can decode: the closed vocabulary of
+ * `obd.<field>` metric names. A model lists a subset; the device emits the
+ * intersection with what the vehicle actually supports (an unsupported PID is
+ * never polled and never emitted). `link` is the health code (0 no adapter,
+ * 1 adapter only, 2 ECU answering) and is always present while the collector
+ * runs.
+ */
+export type ObdField =
+  | "rpm"
+  | "speed"
+  | "coolant_temp"
+  | "engine_load"
+  | "throttle"
+  | "pedal"
+  | "intake_temp"
+  | "ambient_temp"
+  | "intake_map"
+  | "baro"
+  | "fuel_level"
+  | "fuel_rate"
+  | "module_voltage"
+  | "adapter_voltage"
+  | "run_time"
+  | "odometer"
+  | "gear"
+  | "distance_since_clear"
+  | "mil"
+  | "dtc_count"
+  | "link";
+
+/**
+ * An OBD-II reader the model expects attached to every device. The adapter's
+ * Bluetooth address is NOT here: it is per vehicle, so it is a device setting
+ * (the `obd` config namespace), not a model fact.
+ */
+export interface ObdPeripheralCapability {
+  adapter: ObdAdapter;
+  transport: ObdTransport;
+  /** Poll rate in Hz; the device defaults to 1. */
+  rateHz?: number;
+  /** Which `obd.<field>` metrics this model declares, in display order. */
+  fields: ObdField[];
+  /**
+   * String items (`vin`, `cal_ids`, `ecu_names`, `dtcs`) that travel via the
+   * device's config report rather than telemetry, which is numbers only.
+   * Declared but not surfaced by the platform yet.
+   */
+  info?: string[];
+}
+
+export interface PeripheralsCapabilities {
+  obd?: ObdPeripheralCapability;
+}
+
 export interface IoCapabilitiesV2 {
   schemaVersion: 2;
   media?: { video?: VideoCapabilityV2[]; audio?: AudioCapability[] };
   sensors?: { imu?: ImuCapabilityV2 };
   comm?: { module?: string; gps?: FieldList; signal?: FieldList };
   system: SystemCapabilitiesV2;
+  /** External devices attached to the kit (v2 only). */
+  peripherals?: PeripheralsCapabilities;
 }
 
 export type IoCapabilities = IoCapabilitiesV1 | IoCapabilitiesV2;

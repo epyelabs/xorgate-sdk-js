@@ -1,7 +1,7 @@
 {
-  "$comment": "Hand-derived from xorgate-core-service src/schemas/capabilities.ts (the zod schema provisioning parses with). This file is the SDK's copy of that contract; scripts/generate.mjs turns it into src/generated/capabilities.ts. When capabilities.ts changes upstream, xorgate-core-service's test/sdk-vendor-drift.test.ts fails and points here. schemaVersion 2 (cm4-support plan) adds the platform facts the device agent turns into mechanism: system.platform/encoder/rails/statusLed, per-video connector+sensor, sensors.imu.model. The root dispatches on schemaVersion, mirroring the upstream z.discriminatedUnion; statusLed is nullable, which the generated checker's null-as-absent rule already covers.",
+  "$comment": "Hand-derived from xorgate-core-service src/schemas/capabilities.ts (the zod schema provisioning parses with). This file is the SDK's copy of that contract; scripts/generate.mjs turns it into src/generated/capabilities.ts. When capabilities.ts changes upstream, xorgate-core-service's test/sdk-vendor-drift.test.ts fails and points here. schemaVersion 2 (cm4-support plan) adds the platform facts the device agent turns into mechanism: system.platform/encoder/rails/statusLed, per-video connector+sensor, sensors.imu.model. The root dispatches on schemaVersion, mirroring the upstream z.discriminatedUnion; statusLed is nullable, which the generated checker's null-as-absent rule already covers. peripherals (obd2-bluetooth-integration plan, D2) adds the optional v2 peripherals.obd section: adapter/transport enums, rateHz, a fields list drawn from the closed OBD_FIELDS vocabulary, and info.",
   "$sourceFile": "src/schemas/capabilities.ts",
-  "$sourceSha256": "76101abaf26dd247563ef15ca57950b61abe3f854a6f7e5fc600c513ec93858f",
+  "$sourceSha256": "1683c087f80001f044761b01cc5d5530be499c18f2ffea7e77b7f64957fa0379",
   "root": "IoCapabilities",
   "definitions": {
     "FieldList": {
@@ -128,6 +128,34 @@
         "system": { "kind": "ref", "ref": "FieldList" }
       }
     },
+    "ObdPeripheralCapability": {
+      "kind": "object",
+      "properties": {
+        "adapter": { "kind": "enum", "values": ["elm327"], "required": true },
+        "transport": { "kind": "enum", "values": ["bt-spp", "usb-serial"], "required": true },
+        "rateHz": { "kind": "number", "positive": true },
+        "fields": {
+          "kind": "array",
+          "required": true,
+          "items": {
+            "kind": "enum",
+            "values": [
+              "rpm", "speed", "coolant_temp", "engine_load", "throttle", "pedal",
+              "intake_temp", "ambient_temp", "intake_map", "baro", "fuel_level",
+              "fuel_rate", "module_voltage", "adapter_voltage", "run_time",
+              "odometer", "gear", "distance_since_clear", "mil", "dtc_count", "link"
+            ]
+          }
+        },
+        "info": { "kind": "array", "items": { "kind": "string" } }
+      }
+    },
+    "PeripheralsCapabilities": {
+      "kind": "object",
+      "properties": {
+        "obd": { "kind": "ref", "ref": "ObdPeripheralCapability" }
+      }
+    },
     "IoCapabilitiesV2": {
       "kind": "object",
       "properties": {
@@ -135,7 +163,8 @@
         "media": { "kind": "ref", "ref": "MediaCapabilitiesV2" },
         "sensors": { "kind": "ref", "ref": "SensorsCapabilitiesV2" },
         "comm": { "kind": "ref", "ref": "CommCapabilities" },
-        "system": { "kind": "ref", "ref": "SystemCapabilitiesV2", "required": true }
+        "system": { "kind": "ref", "ref": "SystemCapabilitiesV2", "required": true },
+        "peripherals": { "kind": "ref", "ref": "PeripheralsCapabilities" }
       }
     },
     "IoCapabilities": {

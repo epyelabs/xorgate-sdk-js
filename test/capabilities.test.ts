@@ -224,3 +224,80 @@ test("declaredMetrics is empty for a model that declares nothing", () => {
   assert.deepEqual(declaredMetrics(model(null)), []);
   assert.deepEqual(declaredMetrics(model({ schemaVersion: 1 })), []);
 });
+
+// ---- v2 peripherals.obd (obd2-bluetooth-integration) -----------------------
+
+/** The seeded "Argus CM5 Rev1 + OBD2" row (XG-RPI-REF-1-OBD), near enough. */
+const CM5_OBD: IoCapabilities = {
+  ...CM4,
+  system: { ...(CM4 as { system: object }).system, platform: "rpi-cm5", encoder: "sw-h264" },
+  peripherals: {
+    obd: {
+      adapter: "elm327",
+      transport: "bt-spp",
+      rateHz: 1,
+      fields: ["rpm", "speed", "coolant_temp", "fuel_level", "odometer", "dtc_count", "link"],
+      info: ["vin", "cal_ids", "ecu_names", "dtcs"],
+    },
+  },
+} as IoCapabilities;
+
+test("a v2 document with peripherals.obd validates", () => {
+  const result = validateIoCapabilities(CM5_OBD);
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.issues, []);
+  // rateHz and info are optional.
+  const minimal = {
+    schemaVersion: 2,
+    system: { platform: "rpi-cm5" },
+    peripherals: { obd: { adapter: "elm327", transport: "usb-serial", fields: ["link"] } },
+  };
+  assert.equal(validateIoCapabilities(minimal).valid, true);
+});
+
+test("peripherals.obd is closed: unknown field, adapter or transport is an issue at its path", () => {
+  const badField = validateIoCapabilities({
+    schemaVersion: 2,
+    system: { platform: "rpi-cm5" },
+    peripherals: { obd: { adapter: "elm327", transport: "bt-spp", fields: ["rpm", "boost"] } },
+  });
+  assert.equal(badField.valid, false);
+  assert.deepEqual(badField.issues.map((i) => i.path), ["peripherals.obd.fields[1]"]);
+
+  const badEnums = validateIoCapabilities({
+    schemaVersion: 2,
+    system: { platform: "rpi-cm5" },
+    peripherals: { obd: { adapter: "stn1110", transport: "ble", fields: [] } },
+  });
+  assert.equal(badEnums.valid, false);
+  assert.deepEqual(
+    badEnums.issues.map((i) => i.path).sort(),
+    ["peripherals.obd.adapter", "peripherals.obd.transport"],
+  );
+
+  const noFields = validateIoCapabilities({
+    schemaVersion: 2,
+    system: { platform: "rpi-cm5" },
+    peripherals: { obd: { adapter: "elm327", transport: "bt-spp" } },
+  });
+  assert.equal(noFields.valid, false);
+  assert.deepEqual(noFields.issues.map((i) => i.path), ["peripherals.obd.fields"]);
+});
+
+test("declaredMetrics lists obd.<field> from peripherals.obd.fields, after the other groups", () => {
+  const metrics = declaredMetrics(model(CM5_OBD));
+  const obd = metrics.filter((m) => m.startsWith("obd."));
+  assert.deepEqual(obd, [
+    "obd.rpm",
+    "obd.speed",
+    "obd.coolant_temp",
+    "obd.fuel_level",
+    "obd.odometer",
+    "obd.dtc_count",
+    "obd.link",
+  ]);
+  assert.equal(metrics.at(-1), "obd.link");
+  // A model without the section declares none, v1 or v2.
+  assert.ok(!declaredMetrics(model(CM4)).some((m) => m.startsWith("obd.")));
+  assert.ok(!declaredMetrics(model(PI)).some((m) => m.startsWith("obd.")));
+});

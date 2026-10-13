@@ -560,6 +560,71 @@ function checkIoCapabilitiesV1(value: unknown, path: string, push: Push): void {
   }
 }
 
+function checkObdPeripheralCapability(value: unknown, path: string, push: Push): void {
+  if (!isRecord(value)) {
+    push(path || "(root)", "Expected an object");
+    return;
+  }
+  const p_adapter = path ? `${path}.adapter` : "adapter";
+  if (value["adapter"] === undefined || value["adapter"] === null) {
+    push(p_adapter, "Required");
+  } else {
+    if (!["elm327"].includes(value["adapter"] as string)) push(p_adapter, "Expected one of: elm327");
+  }
+  const p_transport = path ? `${path}.transport` : "transport";
+  if (value["transport"] === undefined || value["transport"] === null) {
+    push(p_transport, "Required");
+  } else {
+    if (!["bt-spp", "usb-serial"].includes(value["transport"] as string)) push(p_transport, "Expected one of: bt-spp, usb-serial");
+  }
+  const p_rateHz = path ? `${path}.rateHz` : "rateHz";
+  if (value["rateHz"] === undefined || value["rateHz"] === null) {
+    /* optional */
+  } else {
+    if (typeof value["rateHz"] !== "number" || !Number.isFinite(value["rateHz"])) push(p_rateHz, "Expected a number");
+    else if ((value["rateHz"] as number) <= 0) push(p_rateHz, "Expected a positive number");
+  }
+  const p_fields = path ? `${path}.fields` : "fields";
+  if (value["fields"] === undefined || value["fields"] === null) {
+    push(p_fields, "Required");
+  } else {
+    if (!Array.isArray(value["fields"])) push(p_fields, "Expected an array");
+    else {
+      const arr = value["fields"] as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        const itemPath = `${p_fields}[${i}]`;
+        if (!["rpm", "speed", "coolant_temp", "engine_load", "throttle", "pedal", "intake_temp", "ambient_temp", "intake_map", "baro", "fuel_level", "fuel_rate", "module_voltage", "adapter_voltage", "run_time", "odometer", "gear", "distance_since_clear", "mil", "dtc_count", "link"].includes(arr[i] as string)) push(itemPath, "Expected one of: rpm, speed, coolant_temp, engine_load, throttle, pedal, intake_temp, ambient_temp, intake_map, baro, fuel_level, fuel_rate, module_voltage, adapter_voltage, run_time, odometer, gear, distance_since_clear, mil, dtc_count, link");
+      }
+    }
+  }
+  const p_info = path ? `${path}.info` : "info";
+  if (value["info"] === undefined || value["info"] === null) {
+    /* optional */
+  } else {
+    if (!Array.isArray(value["info"])) push(p_info, "Expected an array");
+    else {
+      const arr = value["info"] as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        const itemPath = `${p_info}[${i}]`;
+        if (typeof arr[i] !== "string") push(itemPath, "Expected a string");
+      }
+    }
+  }
+}
+
+function checkPeripheralsCapabilities(value: unknown, path: string, push: Push): void {
+  if (!isRecord(value)) {
+    push(path || "(root)", "Expected an object");
+    return;
+  }
+  const p_obd = path ? `${path}.obd` : "obd";
+  if (value["obd"] === undefined || value["obd"] === null) {
+    /* optional */
+  } else {
+    checkObdPeripheralCapability(value["obd"], p_obd, push);
+  }
+}
+
 function checkIoCapabilitiesV2(value: unknown, path: string, push: Push): void {
   if (!isRecord(value)) {
     push(path || "(root)", "Expected an object");
@@ -594,6 +659,12 @@ function checkIoCapabilitiesV2(value: unknown, path: string, push: Push): void {
     push(p_system, "Required");
   } else {
     checkSystemCapabilitiesV2(value["system"], p_system, push);
+  }
+  const p_peripherals = path ? `${path}.peripherals` : "peripherals";
+  if (value["peripherals"] === undefined || value["peripherals"] === null) {
+    /* optional */
+  } else {
+    checkPeripheralsCapabilities(value["peripherals"], p_peripherals, push);
   }
 }
 

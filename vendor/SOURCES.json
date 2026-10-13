@@ -13,8 +13,8 @@
       "file": "io-capabilities.schema.json",
       "relation": "hand-derived structural mirror of a zod schema",
       "sourceFile": "src/schemas/capabilities.ts",
-      "sourceSha256": "76101abaf26dd247563ef15ca57950b61abe3f854a6f7e5fc600c513ec93858f",
-      "vendoredAt": "2026-08-24"
+      "sourceSha256": "1683c087f80001f044761b01cc5d5530be499c18f2ffea7e77b7f64957fa0379",
+      "vendoredAt": "2026-10-13"
     }
   ]
 }

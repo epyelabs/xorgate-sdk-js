@@ -47,7 +47,8 @@ export function videoStreamKeys(model: DeviceModel): StreamKey[] {
 }
 
 /**
- * Every metric name the model implies, e.g. `imu.accel_x`, `gps.lat`.
+ * Every metric name the model implies, e.g. `imu.accel_x`, `gps.lat`,
+ * `obd.rpm`.
  *
  * The prefixes are the platform's, not this SDK's, and one of them is not what
  * you would guess: `comm.signal.fields` produces `lte.*` metrics, because the
@@ -69,6 +70,11 @@ export function declaredMetrics(model: DeviceModel): MetricName[] {
   for (const e of strings(imu?.euler)) push(`imu.euler_${e}`);
   for (const f of strings(caps.comm?.signal?.fields)) push(`lte.${f}`);
   for (const f of strings(caps.system?.fields)) push(`system.${f}`);
+  // v2 `peripherals.obd.fields` -> `obd.*` (an attached ELM327 OBD-II reader).
+  // A v1 document has no `peripherals` key, so the lookup is simply empty there.
+  if (caps.schemaVersion === 2) {
+    for (const f of strings(caps.peripherals?.obd?.fields)) push(`obd.${f}`);
+  }
 
   return [...new Set(out)];
 }

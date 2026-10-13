@@ -3,7 +3,23 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
-## 0.13.0
+## 0.14.0
+
+OBD-II peripherals (API 0.14.0, `plans/obd2-bluetooth-integration`). Additive.
+
+### Added
+
+- **`IoCapabilitiesV2.peripherals`** (`PeripheralsCapabilities`): external
+  devices a kit attaches to. The only entry is **`obd`**
+  (`ObdPeripheralCapability`): an ELM327 reader over `bt-spp` or `usb-serial`,
+  with `rateHz`, a `fields` list drawn from the closed `ObdField` vocabulary
+  (21 names, `rpm` to `link`) and the declared-but-unused `info` list. The
+  adapter's address is a per-device setting, not a model fact.
+- **`declaredMetrics()`** lists `obd.<field>` for a v2 model that declares
+  `peripherals.obd.fields`, the way it lists `gps.*` from `comm.gps.fields`.
+- **`validateIoCapabilities()`** checks the section: an unknown field name,
+  adapter or transport is an issue at its path (`peripherals.obd.fields[3]`).
+
 
 Device SMS clear (API 0.13.0, `plans/device-sms-clear`). Additive.
 
