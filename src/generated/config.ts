@@ -299,11 +299,11 @@ export interface SimulationConfig {
  * `adapterMac` names the ELM327 Bluetooth adapter the device pairs with (stored
  * uppercase; the device never pairs by name), `enabled` is the polling kill
  * switch, `fields` narrows the polled set below the model's declared list
- * (empty = all), and `powerSource` selects the battery policy. Applied live by
- * the agent's OBD collector on its settings poll and on every cloud config
- * message; a changed adapter restarts the helper. Pairing outcome, probe
- * profile and scan candidates come back in the config report under
- * `effective.obd`.
+ * (empty = all), and `powerSource` says how the tracker device (not the
+ * adapter) is powered, which selects the battery policy. Applied live by the
+ * agent's OBD collector on its settings poll and on every cloud config message;
+ * a changed adapter restarts the helper. Pairing outcome, probe profile and
+ * scan candidates come back in the config report under `effective.obd`.
  */
 export interface ObdConfig {
   /**
@@ -335,11 +335,13 @@ export interface ObdConfig {
    */
   fields?: ("rpm" | "speed" | "coolant_temp" | "engine_load" | "throttle" | "pedal" | "intake_temp" | "ambient_temp" | "intake_map" | "baro" | "fuel_level" | "fuel_rate" | "module_voltage" | "adapter_voltage" | "run_time" | "odometer" | "gear" | "distance_since_clear" | "mil" | "dtc_count" | "link")[];
   /**
-   * How the device is powered in the vehicle. "switched" (default): the 12 V
-   * socket dies with the ignition, so the helper only needs to stop cleanly
-   * when the ECU goes silent. "constant": hardwired; the helper additionally
-   * stops polling below 11.8 V and resumes above 12.4 V so it can never drain
-   * the battery.
+   * How the tracker device itself is powered, NOT the adapter (the vehicle's
+   * OBD port powers the adapter either way). "switched" (default): the device
+   * sits on a 12 V socket that dies with the ignition, so polling simply ends
+   * when the device loses power; the helper only needs to stop cleanly when the
+   * ECU goes silent. "constant": the device is hardwired, always on; the helper
+   * stops polling when the ECU goes silent and additionally pauses below 11.8
+   * V, resuming above 12.4 V, so it can never drain the battery.
    */
   powerSource?: "switched" | "constant";
 }
@@ -421,11 +423,12 @@ export interface DeviceConfig {
    * `adapterMac` names the ELM327 Bluetooth adapter the device pairs with
    * (stored uppercase; the device never pairs by name), `enabled` is the
    * polling kill switch, `fields` narrows the polled set below the model's
-   * declared list (empty = all), and `powerSource` selects the battery policy.
-   * Applied live by the agent's OBD collector on its settings poll and on every
-   * cloud config message; a changed adapter restarts the helper. Pairing
-   * outcome, probe profile and scan candidates come back in the config report
-   * under `effective.obd`.
+   * declared list (empty = all), and `powerSource` says how the tracker device
+   * (not the adapter) is powered, which selects the battery policy. Applied
+   * live by the agent's OBD collector on its settings poll and on every cloud
+   * config message; a changed adapter restarts the helper. Pairing outcome,
+   * probe profile and scan candidates come back in the config report under
+   * `effective.obd`.
    */
   obd?: ObdConfig;
 }
