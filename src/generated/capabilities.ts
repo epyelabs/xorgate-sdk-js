@@ -593,7 +593,7 @@ function checkObdPeripheralCapability(value: unknown, path: string, push: Push):
       const arr = value["fields"] as unknown[];
       for (let i = 0; i < arr.length; i++) {
         const itemPath = `${p_fields}[${i}]`;
-        if (!["rpm", "speed", "coolant_temp", "engine_load", "throttle", "pedal", "intake_temp", "ambient_temp", "intake_map", "baro", "fuel_level", "fuel_rate", "module_voltage", "adapter_voltage", "run_time", "odometer", "gear", "distance_since_clear", "mil", "dtc_count", "link"].includes(arr[i] as string)) push(itemPath, "Expected one of: rpm, speed, coolant_temp, engine_load, throttle, pedal, intake_temp, ambient_temp, intake_map, baro, fuel_level, fuel_rate, module_voltage, adapter_voltage, run_time, odometer, gear, distance_since_clear, mil, dtc_count, link");
+        if (!["rpm", "speed", "coolant_temp", "engine_load", "throttle", "pedal", "intake_temp", "ambient_temp", "intake_map", "baro", "fuel_level", "fuel_rate", "module_voltage", "adapter_voltage", "run_time", "odometer", "gear", "distance_since_clear", "mil", "dtc_count", "link", "engine_torque_pct", "reference_torque", "engine_torque"].includes(arr[i] as string)) push(itemPath, "Expected one of: rpm, speed, coolant_temp, engine_load, throttle, pedal, intake_temp, ambient_temp, intake_map, baro, fuel_level, fuel_rate, module_voltage, adapter_voltage, run_time, odometer, gear, distance_since_clear, mil, dtc_count, link, engine_torque_pct, reference_torque, engine_torque");
       }
     }
   }

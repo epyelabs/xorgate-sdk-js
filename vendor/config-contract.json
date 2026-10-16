@@ -551,10 +551,13 @@
                 "distance_since_clear",
                 "mil",
                 "dtc_count",
-                "link"
+                "link",
+                "engine_torque_pct",
+                "reference_torque",
+                "engine_torque"
               ]
             },
-            "maxItems": 21,
+            "maxItems": 24,
             "description": "Fields to poll, a subset of the model's declared `peripherals.obd.fields`. Empty (default) = every field the model declares. The device skips any field the vehicle does not support regardless."
           },
           "powerSource": {

@@ -3,6 +3,22 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.16.0
+
+Engine torque (API 0.17.0, `plans/obd2-bluetooth-integration` POST_INTEGRATION). Additive.
+
+### Added
+
+- **`ObdField`** gains three names, appended after `link` (the vendored
+  capabilities schema and config contract are re-vendored, so
+  `validateIoCapabilities` and `ObdConfig.fields` accept them):
+  - `engine_torque_pct`: PID 62, actual engine torque in % of the reference
+    torque (negative while the engine is being driven, e.g. engine braking).
+  - `reference_torque`: PID 63, the engine's reference torque in Nm (a
+    constant per engine; 280 Nm on the 2022 VW Taos).
+  - `engine_torque`: derived on the device, Nm = pct / 100 x reference, emitted
+    only when both PIDs answered in the same poll cycle.
+
 ## 0.15.0
 
 OBD-II adapter setup (API 0.15.0, `plans/obd2-bluetooth-integration` P3). Additive.
