@@ -284,6 +284,36 @@ test("peripherals.obd is closed: unknown field, adapter or transport is an issue
   assert.deepEqual(noFields.issues.map((i) => i.path), ["peripherals.obd.fields"]);
 });
 
+test("the torque fields (0.16.0) validate and declare obd.<field> metrics after link", () => {
+  const caps = {
+    schemaVersion: 2,
+    system: { platform: "rpi-cm5" },
+    peripherals: {
+      obd: {
+        adapter: "elm327",
+        transport: "bt-spp",
+        fields: ["rpm", "link", "engine_torque_pct", "reference_torque", "engine_torque"],
+      },
+    },
+  };
+  const result = validateIoCapabilities(caps);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.valid, true);
+  const obd = declaredMetrics(model(caps as IoCapabilities)).filter((m) => m.startsWith("obd."));
+  assert.deepEqual(obd, [
+    "obd.rpm",
+    "obd.link",
+    "obd.engine_torque_pct",
+    "obd.reference_torque",
+    "obd.engine_torque",
+  ]);
+  const unknown = validateIoCapabilities({
+    ...caps,
+    peripherals: { obd: { ...caps.peripherals.obd, fields: ["engine_torque_nm"] } },
+  });
+  assert.deepEqual(unknown.issues.map((i) => i.path), ["peripherals.obd.fields[0]"]);
+});
+
 test("declaredMetrics lists obd.<field> from peripherals.obd.fields, after the other groups", () => {
   const metrics = declaredMetrics(model(CM5_OBD));
   const obd = metrics.filter((m) => m.startsWith("obd."));

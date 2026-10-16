@@ -445,7 +445,11 @@ export type ObdTransport = "bt-spp" | "usb-serial";
  * intersection with what the vehicle actually supports (an unsupported PID is
  * never polled and never emitted). `link` is the health code (0 no adapter,
  * 1 adapter only, 2 ECU answering) and is always present while the collector
- * runs.
+ * runs. Torque (0.16.0, appended after `link`): `engine_torque_pct` is PID 62,
+ * actual engine torque in % of the reference (can be negative while the engine
+ * is being driven); `reference_torque` is PID 63, Nm; `engine_torque` is
+ * derived on the device, Nm = pct / 100 x reference, and is emitted only when
+ * both PIDs answered in the same poll cycle.
  */
 export type ObdField =
   | "rpm"
@@ -468,7 +472,10 @@ export type ObdField =
   | "distance_since_clear"
   | "mil"
   | "dtc_count"
-  | "link";
+  | "link"
+  | "engine_torque_pct"
+  | "reference_torque"
+  | "engine_torque";
 
 /**
  * An OBD-II reader the model expects attached to every device. The adapter's

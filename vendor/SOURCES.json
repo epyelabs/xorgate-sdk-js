@@ -6,15 +6,15 @@
       "file": "config-contract.json",
       "relation": "verbatim copy",
       "sourceFile": "src/config-registry/config-contract.json",
-      "sourceSha256": "c0760e6650eca4823991a5df44db400776673ad1dc11fe3088d8508f5fcf2a2a",
-      "vendoredAt": "2026-10-13"
+      "sourceSha256": "5bb0025eae4fa53108157ce1b993933b6d4fcf65403af2136d4e0194b3fc88a0",
+      "vendoredAt": "2026-10-16"
     },
     {
       "file": "io-capabilities.schema.json",
       "relation": "hand-derived structural mirror of a zod schema",
       "sourceFile": "src/schemas/capabilities.ts",
-      "sourceSha256": "1683c087f80001f044761b01cc5d5530be499c18f2ffea7e77b7f64957fa0379",
-      "vendoredAt": "2026-10-13"
+      "sourceSha256": "32bca71a6aad30cc87dbbb623827359c6cf9fec19622c00a52dd0d56c70399fe",
+      "vendoredAt": "2026-10-16"
     }
   ]
 }
