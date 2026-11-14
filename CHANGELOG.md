@@ -3,6 +3,38 @@
 All notable changes to `@xorgate/sdk`. This project follows
 [semantic versioning](https://semver.org/).
 
+## 0.17.0
+
+Dual-agent registration: a device can be registered with the JS agent or the
+native Rust agent (`plans/device-agent-js-to-rust` Phase 8, interface I-P8-2).
+Additive; needs the Phase 8 backend, and degrades to "JS only" on an older one.
+
+### Added
+
+- **`AgentKind`** = `"js"` | `"rust"`.
+- **`CreateDeviceRegistrationInput.agent`**: which installer the code runs
+  (absent = `js`). A pending code is reused only for the same agent, so
+  switching agents mints a new code. `rust` where the stage does not allow it
+  for the workspace answers `409` `AGENT_NOT_ENABLED`; an unknown value `400`
+  `INVALID_AGENT`.
+- **`DeviceRegistration.agent`** and **`Device.agent`**. Both read `js` on an
+  older backend, which only ever installs JS; such a backend ignores a
+  requested `agent`, so compare the returned `agent` with the one asked for
+  before showing an install command.
+- **`devices.agentChannel(agent)`** on `GET /device-dist/latest?agent=`:
+  `{ agent, latest, registrationEnabled }` (`AgentChannel`). `latest` is
+  `null` when nothing is published for that agent on the stage;
+  `registrationEnabled` is the stage flag for the client's workspace. An older
+  backend ignores the parameter, and the SDK reports that (and its 404) as
+  `agent: null`, `latest: null`, `registrationEnabled: false` instead of
+  returning the JS manifest. Use a channel only when `agent` echoes the one
+  you asked for.
+
+### Unchanged
+
+- `devices.latestAgentBuild()` sends no parameter and still returns the JS
+  channel, byte-for-byte the call it was.
+
 ## 0.16.0
 
 Engine torque (API 0.17.0, `plans/obd2-bluetooth-integration` POST_INTEGRATION). Additive.

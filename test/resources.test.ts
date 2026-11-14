@@ -266,6 +266,107 @@ test("deviceRegistrations.create() sends the workspace as a header", async () =>
   assert.equal(reg.code, "K7QF4M2P");
 });
 
+// ---- Phase 8: dual-agent registration (I-P8-2) -----------------------------
+
+const build = { version: "e46b3359", channel: "latest", builtAt: null, packageVersion: null, tarball: null };
+const pendingReg = { code: "K7QF4M2P", status: "pending", deviceId: null, expiresAt: "x", installUrl: "y" };
+
+test("deviceRegistrations.create({ agent }) sends agent in the body, beside deviceModelId", async () => {
+  const { xg, stub } = client([{ body: { ...pendingReg, agent: "rust" } }]);
+  const reg = await xg.forWorkspace("ws-1").deviceRegistrations.create({ agent: "rust", deviceModelId: "dm-1" });
+  assert.deepEqual(stub.calls[0]!.body, { deviceModelId: "dm-1", agent: "rust" });
+  assert.equal(reg.agent, "rust");
+  assert.equal(reg.code, "K7QF4M2P");
+});
+
+test("deviceRegistrations.create() with no agent sends no body at all, as before", async () => {
+  const { xg, stub } = client([{ body: { ...pendingReg, agent: "js" } }]);
+  const reg = await xg.forWorkspace("ws-1").deviceRegistrations.create();
+  assert.equal(stub.calls[0]!.body, undefined);
+  assert.equal(reg.agent, "js");
+});
+
+test("a pre-Phase-8 registration view (no agent) reads as js, so a rust pick is detectably unmet", async () => {
+  const { xg, stub } = client([{ body: pendingReg }, { body: pendingReg }]);
+  const created = await xg.forWorkspace("ws-1").deviceRegistrations.create({ agent: "rust" });
+  assert.deepEqual(stub.calls[0]!.body, { agent: "rust" });
+  assert.equal(created.agent, "js", "the old backend minted a JS code; the caller compares and refuses");
+  assert.equal((await xg.deviceRegistrations.get("K7QF4M2P")).agent, "js");
+});
+
+test("waitForClaim returns the agent of the claimed registration", async () => {
+  const { xg } = client([
+    { body: { ...pendingReg, agent: "rust" } },
+    { body: { ...pendingReg, agent: "rust", status: "claimed", deviceId: "dev-9" } },
+  ]);
+  const claimed = await xg.deviceRegistrations.waitForClaim("K7QF4M2P", { pollIntervalMs: 1 });
+  assert.equal(claimed.agent, "rust");
+});
+
+test("Device.agent passes through, and is js on a backend that predates it", async () => {
+  assert.equal(normalizeDevice(deviceRow({ agent: "rust" })).agent, "rust");
+  assert.equal(normalizeDevice(deviceRow({ agent: "js" })).agent, "js");
+  assert.equal(normalizeDevice(deviceRow()).agent, "js");
+  const { xg } = client([{ body: { device: deviceRow({ agent: "rust" }) } }]);
+  assert.equal((await xg.devices.get("dev-1")).agent, "rust");
+});
+
+test("agentChannel(agent) calls /device-dist/latest?agent= and returns the self-describing body", async () => {
+  const { xg, stub } = client(
+    [{ body: { agent: "rust", latest: build, registrationEnabled: true } }],
+    { workspaceId: "ws-1" },
+  );
+  const channel = await xg.devices.agentChannel("rust");
+  assert.match(stub.calls[0]!.url, /\/v1\/device-dist\/latest\?agent=rust$/);
+  assert.equal(stub.calls[0]!.method, "GET");
+  assert.equal(stub.calls[0]!.headers["x-workspace-id"], "ws-1", "registrationEnabled is per workspace");
+  assert.deepEqual(channel, { agent: "rust", latest: build, registrationEnabled: true });
+});
+
+test("agentChannel: latest null = nothing published, registrationEnabled false = the stage flag", async () => {
+  const { xg } = client([{ body: { agent: "rust", latest: null, registrationEnabled: false } }]);
+  assert.deepEqual(await xg.devices.agentChannel("rust"), {
+    agent: "rust",
+    latest: null,
+    registrationEnabled: false,
+  });
+});
+
+test("agentChannel against an old backend (no echo) is unsupported, never the JS manifest", async () => {
+  const old = client([{ body: { latest: build } }]);
+  assert.deepEqual(await old.xg.devices.agentChannel("rust"), {
+    agent: null,
+    latest: null,
+    registrationEnabled: false,
+  });
+  // An old backend with nothing published answers 404 even with the parameter.
+  const oldEmpty = client([
+    { status: 404, body: { error: { code: "NOT_FOUND", message: "No published agent build manifest yet" } } },
+  ]);
+  assert.deepEqual(await oldEmpty.xg.devices.agentChannel("js"), {
+    agent: null,
+    latest: null,
+    registrationEnabled: false,
+  });
+});
+
+test("agentChannel still throws on a 400 or 403: only NOT_FOUND is mapped", async () => {
+  for (const [status, code] of [[400, "INVALID_INPUT"], [403, "FORBIDDEN"]] as const) {
+    const { xg } = client([{ status, body: { error: { code, message: "no" } } }]);
+    await assert.rejects(xg.devices.agentChannel("rust"), (e: unknown) => {
+      assert.ok(isXorgateError(e));
+      assert.equal(e.code, code);
+      return true;
+    });
+  }
+});
+
+test("latestAgentBuild() is unchanged: no agent parameter on the wire", async () => {
+  const { xg, stub } = client([{ body: { latest: build } }]);
+  assert.equal((await xg.devices.latestAgentBuild())!.version, "e46b3359");
+  assert.match(stub.calls[0]!.url, /\/v1\/device-dist\/latest$/);
+});
+
 test("waitForClaim resolves on claimed, throws CONFLICT on expired", async () => {
   const pending = { code: "C", status: "pending", deviceId: null, expiresAt: "x", installUrl: "y" };
   const claimed = { ...pending, status: "claimed", deviceId: "dev-9" };

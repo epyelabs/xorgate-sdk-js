@@ -525,6 +525,13 @@ export type IoCapabilitiesResult =
 
 // ---- devices ---------------------------------------------------------------
 
+/**
+ * Which device agent a registration installs and a device runs: the Node.js
+ * agent (`js`, the original) or the native Rust agent (`rust`). Fixed by the
+ * registration code the device was installed from.
+ */
+export type AgentKind = "js" | "rust";
+
 export interface Device {
   id: string;
   workspaceId: string;
@@ -533,6 +540,15 @@ export interface Device {
   name: string | null;
   /** Compare against `AgentBuild.version` by STRING EQUALITY. Shas do not order. */
   agentVersion: string | null;
+  /**
+   * The agent this device runs: set from its registration at claim; a JS
+   * device converted in place can move to `rust` once its Rust build reports.
+   * Compare `agentVersion` against `devices.agentChannel(device.agent)`, not
+   * against `latestAgentBuild()` (that is the JS channel only). `js` on a
+   * backend that predates dual-agent registration, where every device was
+   * registered as JS. Machine-managed.
+   */
+  agent: AgentKind;
   /** Machine-managed. Writing it through `update()` is a 400. */
   status: DeviceStatus;
   /**
@@ -667,6 +683,28 @@ export interface AgentBuild {
   tarball: string | null;
 }
 
+/**
+ * What `devices.agentChannel(agent)` returns: one agent's dist channel on
+ * this stage, as seen from the caller's workspace.
+ *
+ * Use it only when `agent` equals the agent you asked for. A backend that
+ * predates dual-agent registration ignores the `?agent=` parameter and
+ * answers with the JS manifest and no echo; the SDK reports that as
+ * `agent: null` (and `registrationEnabled: false`), which a caller should
+ * read as "this API does not support that agent", never as the JS build.
+ */
+export interface AgentChannel {
+  /** The agent the backend answered for; `null` = it did not echo one. */
+  agent: AgentKind | null;
+  /** The stage's latest published build; `null` = none published yet. */
+  latest: AgentBuild | null;
+  /**
+   * Whether `deviceRegistrations.create({ agent })` is allowed for this agent
+   * in the caller's workspace (the stage flag). `false` when `agent` is null.
+   */
+  registrationEnabled: boolean;
+}
+
 export type RegistrationStatus = "pending" | "claimed" | "expired";
 
 export interface DeviceRegistration {
@@ -678,6 +716,12 @@ export interface DeviceRegistration {
   expiresAt: string;
   /** `<api base>/get/{code}`. Run it on the device. */
   installUrl: string;
+  /**
+   * The agent this code installs. `js` on a backend that predates dual-agent
+   * registration: it ignores a requested `agent` and mints a JS code, so
+   * check this equals what you asked for before showing the install command.
+   */
+  agent: AgentKind;
 }
 
 export interface SearchResult {
@@ -1196,6 +1240,14 @@ export interface CreateDeviceRegistrationInput {
    * pending code exists re-pins that code's model in place. Unknown ids 400.
    */
   deviceModelId?: string;
+  /**
+   * The agent the code installs; absent = `js`. A pending code is reused only
+   * for the SAME agent, so switching agents mints a new code. `rust` while the
+   * stage does not allow it for the workspace answers 409
+   * `AGENT_NOT_ENABLED` (see `devices.agentChannel("rust").registrationEnabled`);
+   * an unknown value answers 400 `INVALID_AGENT`.
+   */
+  agent?: AgentKind;
 }
 
 export interface WaitForClaimOptions {

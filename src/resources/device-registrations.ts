@@ -1,5 +1,6 @@
 import { XorgateError } from "../errors.js";
 import type { HttpCore } from "../http.js";
+import { normalizeRegistration } from "../normalize.js";
 import type {
   CreateDeviceRegistrationInput,
   DeviceRegistration,
@@ -18,6 +19,10 @@ export class DeviceRegistrationsResource {
    * instead of a new one, so a page reload or a retried timeout costs nothing.
    * Note the API answers 200, not 201, and its body is a bare object rather
    * than a named envelope: it is the one response in the API that does that.
+   *
+   * `agent` picks the installer (absent = `js`). A pre-Phase-8 backend ignores
+   * it and returns a JS code, so compare the returned `agent` with the one you
+   * asked for before showing the install command.
    */
   async create(
     input: CreateDeviceRegistrationInput = {},
@@ -31,25 +36,30 @@ export class DeviceRegistrationsResource {
           "or configure one with forWorkspace() / the client's workspaceId option.",
       });
     }
-    return await this.http.request<DeviceRegistration>(
+    const body: Record<string, unknown> = {};
+    if (input.deviceModelId) body["deviceModelId"] = input.deviceModelId;
+    if (input.agent !== undefined) body["agent"] = input.agent;
+    const reply = await this.http.request<unknown>(
       "POST",
       "/device-registrations",
       {
         workspaceId,
-        ...(input.deviceModelId ? { body: { deviceModelId: input.deviceModelId } } : {}),
+        ...(Object.keys(body).length > 0 ? { body } : {}),
       },
       this.tenancy,
     );
+    return normalizeRegistration(reply);
   }
 
   /** Reading lazily expires a stale pending code. */
   async get(code: string): Promise<DeviceRegistration> {
-    return await this.http.request<DeviceRegistration>(
+    const reply = await this.http.request<unknown>(
       "GET",
       `/device-registrations/${encodeURIComponent(code)}`,
       {},
       this.tenancy,
     );
+    return normalizeRegistration(reply);
   }
 
   /**

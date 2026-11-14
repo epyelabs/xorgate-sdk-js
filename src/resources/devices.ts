@@ -4,6 +4,8 @@ import { isXorgateError } from "../errors.js";
 import type { HttpCore } from "../http.js";
 import type {
   AgentBuild,
+  AgentChannel,
+  AgentKind,
   BulkTransferItem,
   CommandAccepted,
   CreateDeviceInput,
@@ -853,6 +855,49 @@ export class DevicesResource {
       throw e;
     }
   }
+
+  /**
+   * One agent's dist channel on this stage (`GET /device-dist/latest?agent=`):
+   * its latest build, and whether registering that agent is allowed in the
+   * client's workspace. Fleet-wide like `latestAgentBuild()`, which stays the
+   * JS channel and is unchanged.
+   *
+   * Always check `channel.agent === agent` before using it. A backend that
+   * predates dual-agent registration ignores the parameter; the SDK reports
+   * that (and its 404 for "nothing published") as `agent: null`,
+   * `latest: null`, `registrationEnabled: false`, rather than passing its JS
+   * manifest off as the channel you asked for.
+   */
+  async agentChannel(agent: AgentKind): Promise<AgentChannel> {
+    let body: unknown;
+    try {
+      body = await this.http.request(
+        "GET",
+        "/device-dist/latest",
+        { query: { agent } },
+        this.tenancy,
+      );
+    } catch (e) {
+      // The current backend always answers 200; only an old one 404s here.
+      if (isXorgateError(e) && e.code === "NOT_FOUND") return unsupportedChannel();
+      throw e;
+    }
+    const row =
+      typeof body === "object" && body !== null && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {};
+    const echoed = row["agent"];
+    if (typeof echoed !== "string" || echoed === "") return unsupportedChannel();
+    return {
+      agent: echoed as AgentKind,
+      latest: (row["latest"] as AgentBuild | null | undefined) ?? null,
+      registrationEnabled: row["registrationEnabled"] === true,
+    };
+  }
+}
+
+function unsupportedChannel(): AgentChannel {
+  return { agent: null, latest: null, registrationEnabled: false };
 }
 
 /** The config view of a device read, with `pending` computed. */

@@ -15,7 +15,9 @@
  */
 import { XorgateError } from "./errors.js";
 import type {
+  AgentKind,
   Device,
+  DeviceRegistration,
   DeviceConfig,
   DeviceUiPrefs,
   HttpMethod,
@@ -161,6 +163,7 @@ export function normalizeDevice(value: unknown): Device {
     serial: String(row["serial"]),
     name: (row["name"] as string | null) ?? null,
     agentVersion: (row["agentVersion"] as string | null) ?? null,
+    agent: agentKindOrJs(row["agent"]),
     status: row["status"] as Device["status"],
     // Absent on a pre-cm4-support backend; false is the right read there
     // (probe-at-claim did not exist, so no device is awaiting a model).
@@ -179,6 +182,22 @@ export function normalizeDevice(value: unknown): Device {
     createdAt: String(row["createdAt"]),
     updatedAt: String(row["updatedAt"]),
   };
+}
+
+/**
+ * Absent on a backend that predates dual-agent registration (Phase 8); `js` is
+ * the right read there, because that backend only ever installed the JS agent
+ * (it is also the column's default). A value the SDK does not know yet passes
+ * through rather than being mislabelled `js`.
+ */
+export function agentKindOrJs(value: unknown): AgentKind {
+  return typeof value === "string" && value !== "" ? (value as AgentKind) : "js";
+}
+
+/** A registration view, with `agent` filled in for a pre-Phase-8 backend. */
+export function normalizeRegistration(value: unknown): DeviceRegistration {
+  const row = asRecord(value, "a device registration");
+  return { ...(row as unknown as DeviceRegistration), agent: agentKindOrJs(row["agent"]) };
 }
 
 /** Query values the API understands: ISO-8601 for a time, omitted for undefined. */
