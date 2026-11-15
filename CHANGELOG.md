@@ -11,21 +11,27 @@ Additive; needs the Phase 8 backend, and degrades to "JS only" on an older one.
 
 ### Added
 
-- **`AgentKind`** = `"js"` | `"rust"`.
+- **`AgentKind`** = `"js"` | `"rust"` (what you send), and
+  **`ReportedAgentKind`** = `AgentKind | (string & {})` (what you read): a
+  value newer than this SDK passes through rather than being mislabelled, so
+  narrow it with the new **`isAgentKind()`** guard before a `switch` or
+  `agentChannel()`.
 - **`CreateDeviceRegistrationInput.agent`**: which installer the code runs
   (absent = `js`). A pending code is reused only for the same agent, so
   switching agents mints a new code. `rust` where the stage does not allow it
   for the workspace answers `409` `AGENT_NOT_ENABLED`; an unknown value `400`
-  `INVALID_AGENT`.
+  `INVALID_AGENT`. Both codes join `XorgateApiErrorCode`.
 - **`DeviceRegistration.agent`** and **`Device.agent`**. Both read `js` on an
   older backend, which only ever installs JS; such a backend ignores a
   requested `agent`, so compare the returned `agent` with the one asked for
   before showing an install command.
-- **`devices.agentChannel(agent)`** on `GET /device-dist/latest?agent=`:
-  `{ agent, latest, registrationEnabled }` (`AgentChannel`). `latest` is
-  `null` when nothing is published for that agent on the stage;
-  `registrationEnabled` is the stage flag for the client's workspace. An older
-  backend ignores the parameter, and the SDK reports that (and its 404) as
+- **`devices.agentChannel(agent, { workspaceId? })`** on
+  `GET /device-dist/latest?agent=`: `{ agent, latest, registrationEnabled }`
+  (`AgentChannel`). `latest` is `null` when nothing is published for that
+  agent on the stage; `registrationEnabled` is the stage flag for the
+  workspace (the per-call one, else the client's). An older
+  backend ignores the parameter, and the SDK reports that (and any 404,
+  including a bare gateway one) as
   `agent: null`, `latest: null`, `registrationEnabled: false` instead of
   returning the JS manifest. Use a channel only when `agent` echoes the one
   you asked for.

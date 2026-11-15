@@ -859,7 +859,8 @@ export class DevicesResource {
   /**
    * One agent's dist channel on this stage (`GET /device-dist/latest?agent=`):
    * its latest build, and whether registering that agent is allowed in the
-   * client's workspace. Fleet-wide like `latestAgentBuild()`, which stays the
+   * workspace (`options.workspaceId`, else the client's; it is the one
+   * `deviceRegistrations.create()` should use too). Fleet-wide like `latestAgentBuild()`, which stays the
    * JS channel and is unchanged.
    *
    * Always check `channel.agent === agent` before using it. A backend that
@@ -868,13 +869,19 @@ export class DevicesResource {
    * `latest: null`, `registrationEnabled: false`, rather than passing its JS
    * manifest off as the channel you asked for.
    */
-  async agentChannel(agent: AgentKind): Promise<AgentChannel> {
+  async agentChannel(
+    agent: AgentKind,
+    options: { workspaceId?: string } = {},
+  ): Promise<AgentChannel> {
     let body: unknown;
     try {
       body = await this.http.request(
         "GET",
         "/device-dist/latest",
-        { query: { agent } },
+        {
+          query: { agent },
+          ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+        },
         this.tenancy,
       );
     } catch (e) {
@@ -889,7 +896,7 @@ export class DevicesResource {
     const echoed = row["agent"];
     if (typeof echoed !== "string" || echoed === "") return unsupportedChannel();
     return {
-      agent: echoed as AgentKind,
+      agent: echoed,
       latest: (row["latest"] as AgentBuild | null | undefined) ?? null,
       registrationEnabled: row["registrationEnabled"] === true,
     };

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createClient, isXorgateError } from "../src/index.js";
+import { createClient, isAgentKind, isXorgateError } from "../src/index.js";
 import { deviceRow, stubFetch, type StubReply } from "./stub.js";
 import { normalizeDevice } from "../src/normalize.js";
 
@@ -359,6 +359,54 @@ test("agentChannel still throws on a 400 or 403: only NOT_FOUND is mapped", asyn
       return true;
     });
   }
+});
+
+test("create({ agent: 'rust' }) where the stage flag is off: a typed 409 AGENT_NOT_ENABLED, not retryable", async () => {
+  const { xg } = client([
+    { status: 409, body: { error: { code: "AGENT_NOT_ENABLED", message: "Rust registration is not enabled here" } } },
+  ]);
+  await assert.rejects(xg.forWorkspace("ws-1").deviceRegistrations.create({ agent: "rust" }), (e: unknown) => {
+    assert.ok(isXorgateError(e));
+    // Compiles only because the code is in the XorgateApiErrorCode union.
+    assert.ok(e.code === "AGENT_NOT_ENABLED");
+    assert.equal(e.status, 409);
+    assert.equal(e.retryable, false);
+    return true;
+  });
+  const bad = client([{ status: 400, body: { error: { code: "INVALID_AGENT", message: "agent must be js or rust" } } }]);
+  await assert.rejects(
+    bad.xg.forWorkspace("ws-1").deviceRegistrations.create({ agent: "go" as never }),
+    (e: unknown) => isXorgateError(e) && e.code === "INVALID_AGENT" && e.status === 400,
+  );
+});
+
+test("agentChannel(agent, { workspaceId }) evaluates registrationEnabled for that workspace", async () => {
+  const { xg, stub } = client(
+    [{ body: { agent: "rust", latest: build, registrationEnabled: true } }],
+    { workspaceId: "ws-1" },
+  );
+  await xg.devices.agentChannel("rust", { workspaceId: "ws-2" });
+  assert.equal(stub.calls[0]!.headers["x-workspace-id"], "ws-2", "the per-call workspace wins, as in create()");
+  const root = client([{ body: { agent: "js", latest: build, registrationEnabled: true } }]);
+  await root.xg.devices.agentChannel("js");
+  assert.equal(root.stub.calls[0]!.headers["x-workspace-id"], undefined);
+});
+
+test("agentChannel: a gateway-shaped 404 (no envelope) also reads as unsupported, deliberately", async () => {
+  const { xg } = client([{ status: 404, body: { message: "Not Found" } }]);
+  assert.deepEqual(await xg.devices.agentChannel("rust"), {
+    agent: null,
+    latest: null,
+    registrationEnabled: false,
+  });
+});
+
+test("an agent value newer than this SDK passes through, never mislabelled js", async () => {
+  assert.equal(normalizeDevice(deviceRow({ agent: "go" })).agent, "go");
+  const { xg } = client([{ body: { agent: "go", latest: null, registrationEnabled: false } }]);
+  assert.equal((await xg.devices.agentChannel("rust")).agent, "go", "and so fails the caller's echo check");
+  assert.equal(isAgentKind("go"), false);
+  assert.equal(isAgentKind("rust") && isAgentKind("js"), true);
 });
 
 test("latestAgentBuild() is unchanged: no agent parameter on the wire", async () => {

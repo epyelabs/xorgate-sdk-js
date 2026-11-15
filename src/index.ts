@@ -57,4 +57,6 @@ export type { WebhookVerificationFailure } from "./webhooks/verify.js";
 
 export { CONFIG_NAMESPACES } from "./generated/config.js";
 
+export { isAgentKind } from "./normalize.js";
+
 export type * from "./types.js";

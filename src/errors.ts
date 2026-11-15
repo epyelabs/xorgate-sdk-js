@@ -69,7 +69,13 @@ export type XorgateApiErrorCode =
   // `null`.
   | "DEVICE_OFFLINE"
   | "UNSUPPORTED_AGENT"
-  | "NO_SMS_READ";
+  | "NO_SMS_READ"
+  // Dual-agent registration (`deviceRegistrations.create({ agent })`).
+  // `INVALID_AGENT` is a 400 (not `js` or `rust`); `AGENT_NOT_ENABLED` is a
+  // 409: the stage does not allow that agent for the workspace yet (see
+  // `devices.agentChannel(agent).registrationEnabled`).
+  | "INVALID_AGENT"
+  | "AGENT_NOT_ENABLED";
 
 /** Codes the SDK raises itself. No HTTP request necessarily happened. */
 export type XorgateClientErrorCode =

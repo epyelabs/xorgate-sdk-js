@@ -24,6 +24,7 @@ import type {
   Organization,
   Page,
   PageMeta,
+  ReportedAgentKind,
   User,
 } from "./types.js";
 
@@ -188,10 +189,15 @@ export function normalizeDevice(value: unknown): Device {
  * Absent on a backend that predates dual-agent registration (Phase 8); `js` is
  * the right read there, because that backend only ever installed the JS agent
  * (it is also the column's default). A value the SDK does not know yet passes
- * through rather than being mislabelled `js`.
+ * through rather than being mislabelled `js`; the type says it may.
  */
-export function agentKindOrJs(value: unknown): AgentKind {
-  return typeof value === "string" && value !== "" ? (value as AgentKind) : "js";
+export function agentKindOrJs(value: unknown): ReportedAgentKind {
+  return typeof value === "string" && value !== "" ? value : "js";
+}
+
+/** Narrows a read agent (`ReportedAgentKind`) to one this SDK knows. */
+export function isAgentKind(value: unknown): value is AgentKind {
+  return value === "js" || value === "rust";
 }
 
 /** A registration view, with `agent` filled in for a pre-Phase-8 backend. */

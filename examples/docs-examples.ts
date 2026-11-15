@@ -16,6 +16,7 @@
 import {
   createClient,
   createBootstrapClient,
+  isAgentKind,
   isXorgateError,
   validateIoCapabilities,
   parseIoCapabilities,
@@ -557,6 +558,17 @@ export async function agentBuild() {
   return upToDate;
 }
 
+export async function agentAwareUpdateCheck() {
+  const device = await xg.devices.get(deviceId);
+  // Narrow first: a device can report an agent newer than this SDK.
+  if (!isAgentKind(device.agent)) return null;
+
+  const channel = await xg.forWorkspace(yardId).devices.agentChannel(device.agent);
+  // An older API ignores ?agent= and echoes nothing: treat it as unsupported.
+  if (channel.agent !== device.agent || channel.latest === null) return null;
+  return device.agentVersion !== channel.latest.version;
+}
+
 export async function identityAndProvision() {
   const identity = await xg.devices.identity(deviceId);
   if (identity === null) {
@@ -588,6 +600,17 @@ export async function registrationFlow() {
   });
 
   return xg.devices.get(claimed.deviceId!);
+}
+
+export async function registerWithAgent() {
+  const yard = xg.forWorkspace(yardId);
+  const channel = await yard.devices.agentChannel("rust");
+  const agent = channel.agent === "rust" && channel.registrationEnabled ? "rust" : "js";
+
+  const reg = await yard.deviceRegistrations.create({ agent });
+  // An older API ignores `agent` and mints a JS code: check before showing it.
+  if (reg.agent !== agent) throw new Error("This API does not support that agent");
+  console.log(`Run on the device:\n  curl -sSL ${reg.installUrl} | sudo bash`);
 }
 
 export async function fullOnboarding() {

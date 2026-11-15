@@ -532,6 +532,14 @@ export type IoCapabilitiesResult =
  */
 export type AgentKind = "js" | "rust";
 
+/**
+ * `AgentKind` as READ from the API: it may hold a value newer than this SDK
+ * (a third agent), which is passed through rather than mislabelled. Narrow it
+ * with `isAgentKind()` before switching on it or passing it to
+ * `devices.agentChannel()`.
+ */
+export type ReportedAgentKind = AgentKind | (string & {});
+
 export interface Device {
   id: string;
   workspaceId: string;
@@ -546,9 +554,9 @@ export interface Device {
    * Compare `agentVersion` against `devices.agentChannel(device.agent)`, not
    * against `latestAgentBuild()` (that is the JS channel only). `js` on a
    * backend that predates dual-agent registration, where every device was
-   * registered as JS. Machine-managed.
+   * registered as JS. May hold a value newer than this SDK. Machine-managed.
    */
-  agent: AgentKind;
+  agent: ReportedAgentKind;
   /** Machine-managed. Writing it through `update()` is a 400. */
   status: DeviceStatus;
   /**
@@ -695,7 +703,7 @@ export interface AgentBuild {
  */
 export interface AgentChannel {
   /** The agent the backend answered for; `null` = it did not echo one. */
-  agent: AgentKind | null;
+  agent: ReportedAgentKind | null;
   /** The stage's latest published build; `null` = none published yet. */
   latest: AgentBuild | null;
   /**
@@ -720,8 +728,9 @@ export interface DeviceRegistration {
    * The agent this code installs. `js` on a backend that predates dual-agent
    * registration: it ignores a requested `agent` and mints a JS code, so
    * check this equals what you asked for before showing the install command.
+   * May hold a value newer than this SDK.
    */
-  agent: AgentKind;
+  agent: ReportedAgentKind;
 }
 
 export interface SearchResult {
